@@ -1,0 +1,141 @@
+<!DOCTYPE html>	
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.0.428/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Dynatable/0.3.1/jquery.dynatable.min.js"></script>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mini.css/2.3.4/mini-default.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Dynatable/0.3.1/jquery.dynatable.min.css">
+<style type="text/css">
+.fk {
+	background:url(google_docs.png);
+	background-size: 40px 40px;
+	background-repeat: no-repeat;
+	width:40px;
+	height:40px;
+	padding:0px !important;
+	margin:0px !important;}
+.tbt {
+    border-collapse: collapse;
+	border-width: 0px;}
+.tbt td {	
+	border:0px !important;
+	padding:0px !important;}
+#feladatkiirasok td {
+	line-height:1.2 !important;
+	padding: 0.2rem !important;}
+#left {
+    float: left;
+    width: 50%;
+    background: gray;
+    height: 100%;
+    overflow: scroll;
+}
+#right {
+    float: left;
+    width: 50%;
+    height: 100%;
+    overflow: scroll;
+}
+
+#content, html, body {
+    height: 98%;
+}
+</style>
+</head>
+
+<body>
+
+<script>
+
+pdfjsDistBuildPdf.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.0.428/pdf.worker.min.js';
+
+function displayFK(filename) {
+	var loadingTask = pdfjsDistBuildPdf.getDocument('descriptions/'+filename+'-Feladatkiiras.pdf');
+	loadingTask.promise.then(function(pdf) {
+		var pageNumber = 1;
+		pdf.getPage(pageNumber).then(function(page) {
+			var scale = 1.2;
+			var viewport = page.getViewport(scale);
+			var canvas = document.getElementById('the-canvas');
+			var context = canvas.getContext('2d');
+			canvas.height = viewport.height;
+			canvas.width = viewport.width;
+			var renderContext = {
+				canvasContext: context,
+				viewport: viewport
+			};
+			var renderTask = page.render(renderContext);
+			renderTask.then(function () {
+				console.log('Page rendered');
+			});
+		});
+	});
+	
+	return false;
+}
+
+window.onload = function () {
+		
+    $.getJSON("data.php", function(data) {
+	
+		for (i=0; i<data.length; i++) {
+			button = '<button class="fk" onclick="return displayFK(\'' +
+				data[i].filename + '\');"></button>';
+			data[i].hallgato = '<table class="tbt" cellpadding="0" cellspacing="0" border="0"><tr><td class="tbd" style="width:40px!important;padding:0px">' + button + '</td><td class="tbd">' + data[i].hallgato + ' (' + data[i].szint + ')</td></tr></table>';
+			if (data[i].ekovacsG == null) data[i].ekovacsG = "";
+			data[i].ekovacsG = '<textarea class="input" rows="2" cols="7" name="ekovacsG_' + data[i].id + '">' + data[i].ekovacsG + '</textarea>';
+			if (data[i].eGuszti == null) data[i].eGuszti = "";
+			data[i].eGuszti = '<textarea class="input" rows="2" cols="7" name="eGuszti_' + data[i].id + '">' + data[i].eGuszti + '</textarea>';
+			if (data[i].eGume == null) data[i].eGume = "";
+			data[i].eGume = '<textarea class="input" rows="2" cols="7" name="eGume_' + data[i].id + '">' + data[i].eGume + '</textarea>';
+			if (data[i].ePali == null) data[i].ePali = "";
+			data[i].ePali = '<textarea class="input" rows="2" cols="7" name="ePali_' + data[i].id + '">' + data[i].ePali + '</textarea>';
+		}
+		
+		var dt = $('#feladatkiirasok').dynatable({
+			dataset: {
+				records: data,
+				perPageDefault: 100
+			}
+		});		
+	})
+	.error(function(jqXHR, textStatus, errorThrown) {
+          console.log("error " + textStatus);
+          console.log("incoming Text " + jqXHR.responseText);
+        })
+};
+</script>
+
+<div id="content">
+<div id="left">
+<iframe name="updater" style="display:none;"></iframe>
+<form action="update.php" method="POST" target="updater">
+<input type="submit" value="Update">
+<table id="feladatkiirasok">
+<thead>
+    <tr>
+      <th data-dynatable-column="hallgato">Hallgató</th>
+      <th data-dynatable-column="konzulens">Konzulens</th>
+      <th data-dynatable-column="ekovacsG">KovacsG</th>
+      <th data-dynatable-column="eGuszti">Guszti</th>
+      <th data-dynatable-column="eGume">Gume</th>
+      <th data-dynatable-column="ePali">Pali</th>
+    </tr>
+</thead>
+<tbody>
+</tbody>
+</table>
+</form>  
+</div>
+
+<div id="right">
+<canvas id="the-canvas" style="border:1px solid black;"></canvas>
+</div>
+</div>
+
+</body>
+</html>

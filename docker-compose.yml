@@ -1,0 +1,32 @@
+services:
+  playwright-runner:
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    container_name: scraper
+    volumes:
+      - ./data/td:/data
+      - ./data/db:/db
+      - ./scraper/app:/app
+    working_dir: /app
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Optional: if you want to keep the container running for debugging
+    # tty: true
+    ipc: host                # Recommended for Chromium stability
+    init: true               # Prevents zombie processes (PID=1 handling)
+    cap_add:
+      - SYS_ADMIN            # Helps avoid Chromium launch errors during dev
+
+  dipterv:
+    image: php:8.2-apache
+    container_name: php-apache
+    volumes:
+      - ./data/td:/data
+      - ./data/db:/db
+      - ./webgui/html:/var/www/html
+      - ./webgui/entrypoint.sh:/entrypoint.sh
+    ports:
+      - "8080:80"
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
+    command: ["apache2-foreground"]

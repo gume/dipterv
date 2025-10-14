@@ -5,6 +5,8 @@ import sys
 import re
 import sqlite3
 import pandas as pd
+import os
+import glob
 
 cnx = sqlite3.connect('/db/descriptions.sqlite')
 cursor = cnx.cursor()
@@ -20,16 +22,28 @@ for index, row in df.iterrows():
         rf = re.search('Theses/(.*)/', row[u'Téma oktatói szerkesztő oldalának címe (URL) a portálon'])
         if (rf != None):
             filename = rf.group(1)
+            pattern = f"/data/{filename}-Feladatkiiras-*.pdf"
+            files = glob.glob(pattern)
+            max_num = 0
+            for f in files:
+                match = re.search(rf"{re.escape(filename)}-Feladatkiiras-(\d+)\.pdf$", os.path.basename(f))
+                if match:
+                    num = int(match.group(1))
+                    if num > max_num:
+                        max_num = num
+            filename = f"{filename}-Feladatkiiras-{max_num}.pdf" if max_num > 0 else ""
         hallgato = row[u'Hallgató neve']
         konzulens = row[u'Konzulens neve']
         szint = row[u'Képzés']
-        data_row = (str(index), filename, hallgato.encode('utf-8'), konzulens.encode('utf-8'), szint.encode('utf-8'))
-        print (f"{data_row[0]}, {data_row[1]}, {data_row[2]}, {data_row[3]}, {data_row[4]}")
-        add_row = ("INSERT INTO dipterv "
-            "(id, filename, hallgato, konzulens, szint) "
-            "VALUES (?, ?, ?, ?, ?);")
-        data_row = (str(index), filename, hallgato.encode('utf-8'), konzulens.encode('utf-8'), szint.encode('utf-8'))
-        cursor.execute (add_row, data_row);
+        print (f"{index}, {filename}, {hallgato}, {konzulens}, {szint}")
+
+        # UPSERT: replace existing row with same id (or insert new)
+        add_row = ("INSERT OR REPLACE INTO dipterv "
+                   "(id, filename, hallgato, konzulens, szint) "
+                   "VALUES (?, ?, ?, ?, ?);")
+        # use plain strings (no .encode)
+        data_row = (int(index), filename, str(hallgato), str(konzulens), str(szint))
+        cursor.execute(add_row, data_row)
 
 cnx.commit()
 

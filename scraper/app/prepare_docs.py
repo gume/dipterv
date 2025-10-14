@@ -7,8 +7,12 @@ import subprocess
 
 
 local_dir = os.path.dirname(os.path.abspath(__file__))
+debug_dir = os.path.join(local_dir, "debug")
+os.makedirs(debug_dir, exist_ok=True)
+data_dir = "/data"
+db_dir = "/db"
 
-async def fetch_descriptions_list(url, username, password, debug_dir="./debug"):
+async def fetch_descriptions_list(url, username, password):
 
     os.makedirs(debug_dir, exist_ok=True)
 
@@ -161,7 +165,7 @@ async def fetch_descriptions_list(url, username, password, debug_dir="./debug"):
                 await page.locator("#cphMain_hlExcel").click()
 
             download = await download_info.value
-            download_path = os.path.join(local_dir, f"{semester}_TMIT.xlsx")
+            download_path = os.path.join(db_dir, f"{semester}_TMIT.xlsx")
             await download.save_as(download_path)
             print(f"Downloaded file saved to {download_path}")
 
@@ -174,7 +178,7 @@ async def fetch_descriptions_list(url, username, password, debug_dir="./debug"):
         return html, semester, cookies
 
 
-async def fetch_description(url, cookies, save_dir, debug_dir="./debug"):
+async def fetch_description(url, cookies, save_dir):
 
     os.makedirs(debug_dir, exist_ok=True)
 
@@ -228,14 +232,14 @@ async def fetch_description(url, cookies, save_dir, debug_dir="./debug"):
 
 async def main():
 
-    username = getpass.getuser("Enter username: ")
+    username = input("Enter username: ")
     password = getpass.getpass("Enter password: ")
 
     # Download xlsx file from the portal
     url = "https://diplomaterv.vik.bme.hu/hu/Login.aspx?ReturnUrl=%2fhu%2f&DirectLogin=true"
     html, semester, cookies = await fetch_descriptions_list(url, username, password)
 
-    task_desc_path = os.path.join(local_dir, f"{semester}_TMIT.xlsx")
+    task_desc_path = os.path.join(db_dir, f"{semester}_TMIT.xlsx")
     if os.path.exists(task_desc_path):
         print(f"Task descriptions file exists at: {task_desc_path}")
     else:
@@ -259,22 +263,19 @@ async def main():
 
     print(f"Found {len(urls)} task description URLs needing approval.")
 
-    # Downoad each task description
-    desc_dir = "/data"
-    os.makedirs(desc_dir, exist_ok=True)
-    
+    # Downoad each task description    
     for i, url in enumerate(urls):
-        ok = await fetch_description(url, cookies, desc_dir)
+        ok = await fetch_description(url, cookies, data_dir)
 
     # Set permissions so that the web server can read the files
-    subprocess.run(["chown", "-R", "www-data:www-data", "/data"])
+    subprocess.run(["chown", "-R", "www-data:www-data", data_dir])
 
     # call create_db.py to update the database
     subprocess.run(["python3",
                     os.path.join(local_dir, "create_db.py"),
                     task_desc_path])
     # set permissions for the database
-    subprocess.run(["chown", "-R", "www-data:www-data", "/db"])
+    subprocess.run(["chown", "-R", "www-data:www-data", db_dir])
 
 
 asyncio.run(main())

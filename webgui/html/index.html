@@ -54,7 +54,7 @@ pdfjsDistBuildPdf.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.0.428/pdf.worker.min.js';
 
 function displayFK(filename) {
-	var loadingTask = pdfjsDistBuildPdf.getDocument('descriptions/'+filename+'-Feladatkiiras.pdf');
+	var loadingTask = pdfjsDistBuildPdf.getDocument('descriptions/'+filename);
 	loadingTask.promise.then(function(pdf) {
 		var pageNumber = 1;
 		pdf.getPage(pageNumber).then(function(page) {

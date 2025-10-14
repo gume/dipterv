@@ -2,3 +2,4 @@ AuthType Basic
 AuthName "TMIT szakdolgozat és diplomaterv"
 AuthUserFile /var/www/html/.htpasswd
 Require valid-user
+DirectoryIndex index.html

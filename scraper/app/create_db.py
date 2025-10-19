@@ -28,6 +28,24 @@ CREATE TABLE IF NOT EXISTS dipterv (
 """
 cursor.execute(init_db)
 
+init_view_db = """
+CREATE VIEW IF NOT EXISTS filtered_dipterv AS
+SELECT *
+FROM dipterv t1
+WHERE t1.status != 'OK'
+  AND NOT (
+    t1.status = 'OLD'
+    AND EXISTS (
+      SELECT 1
+      FROM dipterv t2
+      WHERE t2.hallgato = t1.hallgato
+        AND t2.konzulens = t1.konzulens
+        AND t2.status = 'OK'
+    )
+  );
+"""
+cursor.execute(init_view_db)
+
 df = pd.read_excel(sys.argv[1], skiprows=3)
 for index, row in df.iterrows():
     filename = ""

@@ -4,10 +4,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.0.428/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Dynatable/0.3.1/jquery.dynatable.min.js"></script>
+<!-- DataTables instead of Dynatable -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mini.css/2.3.4/mini-default.min.css">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Dynatable/0.3.1/jquery.dynatable.min.css">
+<!-- keep mini.css -->
 <style type="text/css">
 .fk {
 	background:url(google_docs.png);
@@ -42,6 +44,34 @@
 
 #content, html, body {
     height: 98%;
+}
+
+.status-cell {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	width: 60px;
+}
+.status-cell-top {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+}
+.status-cell-ok {
+	color: green;
+	font-weight: bold;
+	font-size: 1.2em;
+}
+.status-cell-no {
+	color: red;
+	font-weight: bold;
+	font-size: 1.2em;
+}
+.status-cell-bottom {
+	text-align: center;
+	font-size: 0.9em;
+	border-top: 1px solid #ccc;
+	margin-top: 2px;
 }
 </style>
 </head>
@@ -78,6 +108,19 @@ function displayFK(filename) {
 	return false;
 }
 
+function setStatus(filename, status, row, element) {
+	var statusText = status === 'ok' ? 'OK' : 'Not OK';
+	var statusTextElement = document.getElementById(`status-text-${filename}`);
+	statusTextElement.textContent = statusText;
+	var statusTextElement = document.getElementById(`status-input-${filename}`);
+	statusTextElement.value = statusText;
+
+	console.log(element);
+}
+
+var notOK = false;
+var table = null;
+
 window.onload = function () {
 		
     $.getJSON("data.php", function(data) {
@@ -85,29 +128,96 @@ window.onload = function () {
 		for (i=0; i<data.length; i++) {
 			button = '<button class="fk" onclick="return displayFK(\'' +
 				data[i].filename + '\');"></button>';
-			data[i].hallgato = '<table class="tbt" cellpadding="0" cellspacing="0" border="0"><tr><td class="tbd" style="width:40px!important;padding:0px">' + button + '</td><td class="tbd">' + data[i].hallgato + ' (' + data[i].szint + ')</td></tr></table>';
+			data[i].hallgato_raw = data[i].hallgato;
+			hidden = '<span ' + data[i].hallgato + '</span>';
+			data[i].hallgato = '<table class="tbt" cellpadding="0" cellspacing="0" border="0"><tr><td class="tbd" style="width:40px!important;padding:0px">' + hidden + button + '</td><td class="tbd">' + data[i].hallgato + ' (' + data[i].szint + ')</td></tr></table>';
 			if (data[i].ekovacsG == null) data[i].ekovacsG = "";
-			data[i].ekovacsG = '<textarea class="input" rows="2" cols="7" name="ekovacsG_' + data[i].id + '">' + data[i].ekovacsG + '</textarea>';
+			data[i].ekovacsG = '<textarea class="input" rows="2" cols="7" name="ekovacsG_' + data[i].filename + '">' + data[i].ekovacsG + '</textarea>';
 			if (data[i].eGuszti == null) data[i].eGuszti = "";
-			data[i].eGuszti = '<textarea class="input" rows="2" cols="7" name="eGuszti_' + data[i].id + '">' + data[i].eGuszti + '</textarea>';
+			data[i].eGuszti = '<textarea class="input" rows="2" cols="7" name="eGuszti_' + data[i].filename + '">' + data[i].eGuszti + '</textarea>';
 			if (data[i].eGume == null) data[i].eGume = "";
-			data[i].eGume = '<textarea class="input" rows="2" cols="7" name="eGume_' + data[i].id + '">' + data[i].eGume + '</textarea>';
+			data[i].eGume = '<textarea class="input" rows="2" cols="7" name="eGume_' + data[i].filename + '">' + data[i].eGume + '</textarea>';
 			if (data[i].ePali == null) data[i].ePali = "";
-			data[i].ePali = '<textarea class="input" rows="2" cols="7" name="ePali_' + data[i].id + '">' + data[i].ePali + '</textarea>';
+			data[i].ePali = '<textarea class="input" rows="2" cols="7" name="ePali_' + data[i].filename + '">' + data[i].ePali + '</textarea>';
+			data[i].status_raw = data[i].status;
+			data[i].status = `
+				<div class="status-cell">
+					<span ${data[i].status_raw}></span>
+					<div class="status-cell-top">
+						<span class="status-cell-ok" style="cursor:pointer;" onclick="setStatus(\'${data[i].filename}\', 'ok', ${i}, this)">&#10003;</span>
+						<span class="status-cell-no" style="cursor:pointer;" onclick="setStatus(\'${data[i].filename}\', 'no', ${i}, this)">&#10007;</span>
+					</div>
+					<div class="status-cell-bottom" id="status-text-${data[i].filename}">
+						${data[i].status_raw || ''}
+					</div>
+					<input type="hidden" name="status_${data[i].filename}" id="status-input-${data[i].filename}" value="${data[i].status || ''}">
+				</div>
+			`;
 		}
-		
-		var dt = $('#feladatkiirasok').dynatable({
-			dataset: {
-				records: data,
-				perPageDefault: 100
+
+		// initialize DataTables with provided records
+		table = $('#feladatkiirasok').DataTable({
+			data: data,
+			columns: [
+				{ data: 'hallgato' },
+				{ data: 'konzulens' },
+				{ data: 'ekovacsG' },
+				{ data: 'eGuszti' },
+				{ data: 'eGume' },
+				{ data: 'ePali' },
+				{ data: 'status' }
+			],
+			pageLength: 100,
+			// allow HTML in cells
+			// keep HTML as-is (do not force escape)
+			// (removed render: text() which escaped HTML)
+            dom: 'lfrtip',
+            deferRender: true
+        });
+		// we inserted HTML strings; tell DataTables to render them as HTML by replacing default render
+		$('#feladatkiirasok').on('draw.dt', function() {
+			// no-op placeholder if any post-draw handling required
+		});
+     })
+     .error(function(jqXHR, textStatus, errorThrown) {
+           console.log("error " + textStatus);
+           console.log("incoming Text " + jqXHR.responseText);
+         })
+ };
+ 
+ function okToggle() {
+	notOK = !notOK;
+	if (!table) return;
+	// clear any previous custom search
+	// build custom filter: hide rows with status OK, and hide OLD if a matching OK exists
+	$.fn.dataTable.ext.search = [];
+	if (notOK) {
+		// collect keys (hallgato_raw||konzulens) that have an OK
+		var okKeys = {};
+		table.rows().data().each(function(row) {
+			var key = ((row.hallgato_raw || '') + '||' + (row.konzulens || '')).trim();
+			if ((row.status_raw || '').toString().toLowerCase() === 'ok') {
+				okKeys[key] = true;
 			}
-		});		
-	})
-	.error(function(jqXHR, textStatus, errorThrown) {
-          console.log("error " + textStatus);
-          console.log("incoming Text " + jqXHR.responseText);
-        })
-};
+		});
+
+		$.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+			var row = table.row(dataIndex).data();
+			if (!row) return true; // keep if we can't resolve
+
+			var status = (row.status_raw || '').toString().toLowerCase();
+			var key = ((row.hallgato_raw || '') + '||' + (row.konzulens || '')).trim();
+
+			// hide explicit OK rows
+			if (status === 'ok') return false;
+			// hide OLD when there's a corresponding OK for same hallgato+konzulens
+			if (status === 'old' && okKeys[key]) return false;
+
+			return true;
+		});
+	};
+	table.draw();
+ }
 </script>
 
 <div id="content">
@@ -115,6 +225,7 @@ window.onload = function () {
 <iframe name="updater" style="display:none;"></iframe>
 <form action="update.php" method="POST" target="updater">
 <input type="submit" value="Update">
+<button type="button" id="ok-toggle" name="ok" onclick="okToggle()">not OK</button>
 <table id="feladatkiirasok">
 <thead>
     <tr>
@@ -124,6 +235,7 @@ window.onload = function () {
       <th data-dynatable-column="eGuszti">Guszti</th>
       <th data-dynatable-column="eGume">Gume</th>
       <th data-dynatable-column="ePali">Pali</th>
+      <th data-dynatable-column="status">Status</th>
     </tr>
 </thead>
 <tbody>

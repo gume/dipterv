@@ -11,11 +11,11 @@ import glob
 cnx = sqlite3.connect('/db/descriptions.sqlite')
 cursor = cnx.cursor()
 
-#init_db = 'CREATE TABLE IF NOT EXISTS "dipterv" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,"filename" VARCHAR, "hallgato" VARCHAR, "konzulens" VARCHAR, "szint" VARCHAR, "ekovacsG" VARCHAR, "eGuszti" VARCHAR, "eGume" VARCHAR, "ePali" VARCHAR)'
 init_db = """
 CREATE TABLE IF NOT EXISTS dipterv (
     id INTEGER,
     filename VARCHAR PRIMARY KEY NOT NULL,
+    verzio INTEGER,
     hallgato VARCHAR,
     konzulens VARCHAR,
     szint VARCHAR,

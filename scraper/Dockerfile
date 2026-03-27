@@ -14,8 +14,10 @@ ENV PATH="/venv/bin:$PATH"
 
 # Install Playwright inside the virtual environment
 RUN pip install --upgrade pip && \
-    pip install playwright openpyxl pandas && \
+    pip install --no-cache-dir playwright && \
     playwright install
+
+RUN pip install --no-cache-dir openpyxl pandas pypdf pymupdf pdfplumber language_tool_python
 
 # Copy your script
 #COPY your_script.py /app/your_script.py

@@ -73,6 +73,64 @@
 	border-top: 1px solid #ccc;
 	margin-top: 2px;
 }
+
+#update-popup {
+	position: fixed;
+	top: 1rem;
+	right: 1rem;
+	max-width: 320px;
+	background: #1f2937;
+	color: #fff;
+	padding: 0.9rem 1rem;
+	border-radius: 0.5rem;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+	z-index: 9999;
+	display: none;
+}
+
+#update-popup .popup-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75rem;
+}
+
+#update-popup button {
+	background: transparent;
+	border: 1px solid #9ca3af;
+	color: #fff;
+	padding: 0.2rem 0.5rem;
+	border-radius: 0.3rem;
+	cursor: pointer;
+}
+
+.filter-toggle {
+	margin-left: 0.4rem;
+	padding: 0.3rem 0.6rem;
+	border: 1px solid #9ca3af;
+	border-radius: 0.3rem;
+	cursor: pointer;
+	background: #f3f4f6;
+	color: #111827;
+}
+
+.filter-toggle.active {
+	background: #1f2937;
+	color: #fff;
+	border-color: #1f2937;
+}
+
+#update-form input[type="submit"] {
+	background: #b91c1c;
+	border: 1px solid #991b1b;
+	color: #fff;
+}
+
+.filters-label {
+	margin-left: 0.8rem;
+	margin-right: 0.2rem;
+	font-weight: 600;
+}
 </style>
 </head>
 
@@ -118,10 +176,108 @@ function setStatus(filename, status, row, element) {
 	console.log(element);
 }
 
-var notOK = false;
+var filterOK = true;
+var filterNotOK = true;
+var filterUndef = true;
 var table = null;
+var updatePopupTimer = null;
+
+function hideUpdatePopup() {
+	if (updatePopupTimer) {
+		clearTimeout(updatePopupTimer);
+		updatePopupTimer = null;
+	}
+	var popup = document.getElementById('update-popup');
+	if (popup) popup.style.display = 'none';
+}
+
+function showUpdatePopup(message) {
+	var popup = document.getElementById('update-popup');
+	var popupText = document.getElementById('update-popup-text');
+	if (!popup || !popupText) return;
+
+	popupText.textContent = message;
+	popup.style.display = 'block';
+
+	if (updatePopupTimer) clearTimeout(updatePopupTimer);
+	updatePopupTimer = setTimeout(function () {
+		hideUpdatePopup();
+	}, 4000);
+}
+
+function initUpdatePopup() {
+	var form = document.getElementById('update-form');
+	var dismissButton = document.getElementById('update-popup-dismiss');
+	if (!form || !dismissButton) return;
+
+	form.addEventListener('submit', function () {
+		showUpdatePopup('Update request sent.');
+	});
+
+	dismissButton.addEventListener('click', function () {
+		hideUpdatePopup();
+	});
+}
+
+function setFilterButtonState(buttonId, enabled) {
+	var button = document.getElementById(buttonId);
+	if (!button) return;
+	button.classList.toggle('active', enabled);
+	button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+}
+
+function refreshFilterButtons() {
+	setFilterButtonState('ok-filter-toggle', filterOK);
+	setFilterButtonState('not-ok-filter-toggle', filterNotOK);
+	setFilterButtonState('undef-filter-toggle', filterUndef);
+}
+
+function normalizeStatus(status) {
+	return (status || '').toString().trim().toLowerCase();
+}
+
+function applyStatusFilter() {
+	if (!table) return;
+
+	$.fn.dataTable.ext.search = [];
+	$.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+		var row = table.row(dataIndex).data();
+		if (!row) return true;
+
+		var status = normalizeStatus(row.status_raw);
+		var isOK = status === 'ok';
+		var isNotOK = status === 'not ok';
+		var isUndef = !isOK && !isNotOK;
+
+		if (isOK) return filterOK;
+		if (isNotOK) return filterNotOK;
+		return filterUndef;
+	});
+
+	table.draw();
+}
+
+function toggleOKFilter() {
+	filterOK = !filterOK;
+	refreshFilterButtons();
+	applyStatusFilter();
+}
+
+function toggleNotOKFilter() {
+	filterNotOK = !filterNotOK;
+	refreshFilterButtons();
+	applyStatusFilter();
+}
+
+function toggleUndefFilter() {
+	filterUndef = !filterUndef;
+	refreshFilterButtons();
+	applyStatusFilter();
+}
 
 window.onload = function () {
+	initUpdatePopup();
+	refreshFilterButtons();
 		
     $.getJSON("data.php", function(data) {
 	
@@ -178,54 +334,30 @@ window.onload = function () {
 		$('#feladatkiirasok').on('draw.dt', function() {
 			// no-op placeholder if any post-draw handling required
 		});
+		applyStatusFilter();
      })
      .error(function(jqXHR, textStatus, errorThrown) {
            console.log("error " + textStatus);
            console.log("incoming Text " + jqXHR.responseText);
          })
  };
- 
- function okToggle() {
-	notOK = !notOK;
-	if (!table) return;
-	// clear any previous custom search
-	// build custom filter: hide rows with status OK, and hide OLD if a matching OK exists
-	$.fn.dataTable.ext.search = [];
-	if (notOK) {
-		// collect keys (hallgato_raw||konzulens) that have an OK
-		var okKeys = {};
-		table.rows().data().each(function(row) {
-			var key = ((row.hallgato_raw || '') + '||' + (row.konzulens || '')).trim();
-			if ((row.status_raw || '').toString().toLowerCase() === 'ok') {
-				okKeys[key] = true;
-			}
-		});
-
-		$.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-			var row = table.row(dataIndex).data();
-			if (!row) return true; // keep if we can't resolve
-
-			var status = (row.status_raw || '').toString().toLowerCase();
-			var key = ((row.hallgato_raw || '') + '||' + (row.konzulens || '')).trim();
-
-			// hide explicit OK rows
-			if (status === 'ok') return false;
-			// hide OLD when there's a corresponding OK for same hallgato+konzulens
-			if (status === 'old' && okKeys[key]) return false;
-
-			return true;
-		});
-	};
-	table.draw();
- }
 </script>
 
 <div id="content">
 <div id="left">
+<div id="update-popup" role="status" aria-live="polite">
+	<div class="popup-row">
+		<span id="update-popup-text">Update request sent.</span>
+		<button type="button" id="update-popup-dismiss">Dismiss</button>
+	</div>
+</div>
 <iframe name="updater" style="display:none;"></iframe>
-<form action="update.php" method="POST" target="updater">
+<form id="update-form" action="update.php" method="POST" target="updater">
 <input type="submit" value="Update">
-<button type="button" id="ok-toggle" name="ok" onclick="okToggle()">not OK</button>
+<span class="filters-label">Filters</span>
+<button type="button" class="filter-toggle active" id="ok-filter-toggle" onclick="toggleOKFilter()" aria-pressed="true">OK</button>
+<button type="button" class="filter-toggle active" id="not-ok-filter-toggle" onclick="toggleNotOKFilter()" aria-pressed="true">Not OK</button>
+<button type="button" class="filter-toggle active" id="undef-filter-toggle" onclick="toggleUndefFilter()" aria-pressed="true">undef</button>
 <table id="feladatkiirasok">
 <thead>
     <tr>

@@ -251,16 +251,22 @@ async def main():
     sheet = wb.active
 
     urls = []
+    x_value_stats = {}
 
     r = 5
     while True:
         url = sheet['AW' + str(r)].value
         if (url == None):
             break
-        if sheet['X' + str(r)].value == u"Feltöltve, tanszékvezetői jóváhagyásra vár":
+        x_val = sheet['X' + str(r)].value
+        x_value_stats[x_val] = x_value_stats.get(x_val, 0) + 1
+        if x_val == u"Feltöltve, tanszékvezetői jóváhagyásra vár":
             urls.append(url)
         r = r + 1
 
+    print("X column value statistics:")
+    for val, count in x_value_stats.items():
+        print(f"  {val}: {count}")
     print(f"Found {len(urls)} task description URLs needing approval.")
 
     # Downoad each task description    

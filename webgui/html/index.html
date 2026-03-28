@@ -33,7 +33,34 @@
     width: 50%;
     background: gray;
     height: 100%;
-    overflow: scroll;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#toolbar {
+    flex-shrink: 0;
+    background: #f3f4f6;
+    padding: 0.25rem 0.4rem;
+    border-bottom: 1px solid #d1d5db;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+}
+
+#update-form {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+#table-wrapper {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
 }
 #right {
     float: left;
@@ -105,13 +132,15 @@
 }
 
 .filter-toggle {
-	margin-left: 0.4rem;
-	padding: 0.3rem 0.6rem;
+	margin-left: 0.15rem;
+	padding: 0.1rem 0.45rem;
 	border: 1px solid #9ca3af;
 	border-radius: 0.3rem;
 	cursor: pointer;
 	background: #f3f4f6;
 	color: #111827;
+	font-size: 0.85em;
+	line-height: 1.4;
 }
 
 .filter-toggle.active {
@@ -124,11 +153,16 @@
 	background: #b91c1c;
 	border: 1px solid #991b1b;
 	color: #fff;
+	padding: 0.1rem 0.55rem;
+	font-size: 0.85em;
+	line-height: 1.4;
+	border-radius: 0.3rem;
+	cursor: pointer;
 }
 
 .filters-label {
-	margin-left: 0.8rem;
-	margin-right: 0.2rem;
+	margin-left: 0.4rem;
+	margin-right: 0.1rem;
 	font-weight: 600;
 }
 </style>
@@ -179,6 +213,7 @@ function setStatus(filename, status, row, element) {
 var filterOK = true;
 var filterNotOK = true;
 var filterUndef = true;
+var filterLast = true;
 var table = null;
 var updatePopupTimer = null;
 
@@ -230,6 +265,7 @@ function refreshFilterButtons() {
 	setFilterButtonState('ok-filter-toggle', filterOK);
 	setFilterButtonState('not-ok-filter-toggle', filterNotOK);
 	setFilterButtonState('undef-filter-toggle', filterUndef);
+	setFilterButtonState('last-filter-toggle', filterLast);
 }
 
 function normalizeStatus(status) {
@@ -248,6 +284,8 @@ function applyStatusFilter() {
 		var isOK = status === 'ok';
 		var isNotOK = status === 'not ok';
 		var isUndef = !isOK && !isNotOK;
+
+		if (filterLast && !row.is_last) return false;
 
 		if (isOK) return filterOK;
 		if (isNotOK) return filterNotOK;
@@ -275,6 +313,12 @@ function toggleUndefFilter() {
 	applyStatusFilter();
 }
 
+function toggleLastFilter() {
+	filterLast = !filterLast;
+	refreshFilterButtons();
+	applyStatusFilter();
+}
+
 window.onload = function () {
 	initUpdatePopup();
 	refreshFilterButtons();
@@ -285,8 +329,14 @@ window.onload = function () {
 			button = '<button class="fk" onclick="return displayFK(\'' +
 				data[i].filename + '\');"></button>';
 			data[i].hallgato_raw = data[i].hallgato;
+			data[i].verzio_raw = parseInt(data[i].verzio) || 0;
+			var verzioLabel = data[i].verzio_raw ? 'v' + data[i].verzio_raw : '';
 			hidden = '<span ' + data[i].hallgato + '</span>';
-			data[i].hallgato = '<table class="tbt" cellpadding="0" cellspacing="0" border="0"><tr><td class="tbd" style="width:40px!important;padding:0px">' + hidden + button + '</td><td class="tbd">' + data[i].hallgato + ' (' + data[i].szint + ')</td></tr></table>';
+			data[i].hallgato = '<table class="tbt" cellpadding="0" cellspacing="0" border="0"><tr>' +
+				'<td class="tbd" style="width:40px!important;padding:0px">' + hidden + button + '</td>' +
+				'<td class="tbd">' + data[i].hallgato_raw + ' (' + data[i].szint + ')</td>' +
+				'<td class="tbd" style="padding:0 5px;font-size:0.8em;color:#555;white-space:nowrap">' + verzioLabel + '</td>' +
+				'</tr></table>';
 			if (data[i].ekovacsG == null) data[i].ekovacsG = "";
 			data[i].ekovacsG = '<textarea class="input" rows="2" cols="7" name="ekovacsG_' + data[i].filename + '">' + data[i].ekovacsG + '</textarea>';
 			if (data[i].eGuszti == null) data[i].eGuszti = "";
@@ -309,6 +359,18 @@ window.onload = function () {
 					<input type="hidden" name="status_${data[i].filename}" id="status-input-${data[i].filename}" value="${data[i].status || ''}">
 				</div>
 			`;
+		}
+
+		// compute is_last flag: for each student, mark only the row with the max verzio
+		var maxVerzioMap = {};
+		for (var j = 0; j < data.length; j++) {
+			var key = data[j].hallgato_raw;
+			if (maxVerzioMap[key] === undefined || data[j].verzio_raw > maxVerzioMap[key]) {
+				maxVerzioMap[key] = data[j].verzio_raw;
+			}
+		}
+		for (var j = 0; j < data.length; j++) {
+			data[j].is_last = (data[j].verzio_raw === maxVerzioMap[data[j].hallgato_raw]);
 		}
 
 		// initialize DataTables with provided records
@@ -353,11 +415,15 @@ window.onload = function () {
 </div>
 <iframe name="updater" style="display:none;"></iframe>
 <form id="update-form" action="update.php" method="POST" target="updater">
+<div id="toolbar">
 <input type="submit" value="Update">
 <span class="filters-label">Filters</span>
 <button type="button" class="filter-toggle active" id="ok-filter-toggle" onclick="toggleOKFilter()" aria-pressed="true">OK</button>
 <button type="button" class="filter-toggle active" id="not-ok-filter-toggle" onclick="toggleNotOKFilter()" aria-pressed="true">Not OK</button>
 <button type="button" class="filter-toggle active" id="undef-filter-toggle" onclick="toggleUndefFilter()" aria-pressed="true">undef</button>
+<button type="button" class="filter-toggle active" id="last-filter-toggle" onclick="toggleLastFilter()" aria-pressed="true">last</button>
+</div>
+<div id="table-wrapper">
 <table id="feladatkiirasok">
 <thead>
     <tr>
@@ -373,6 +439,7 @@ window.onload = function () {
 <tbody>
 </tbody>
 </table>
+</div>
 </form>  
 </div>
 

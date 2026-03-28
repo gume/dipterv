@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<style type="text/css">
+html, body {
+    height: 100%;
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+button, input, select, textarea {
+    font: inherit;
+}
+
+#review-wrap {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── top toolbar (mode switch + save) ── */
+#toolbar {
+    flex-shrink: 0;
+    background: #f3f4f6;
+    padding: 0.25rem 0.4rem;
+    border-bottom: 1px solid #d1d5db;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+/* ── document navigator bar ── */
+#nav-bar {
+    flex-shrink: 0;
+    background: #ffffff;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+#nav-bar button {
+    min-width: 2.2rem;
+    height: 2rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.3rem;
+    background: #fff;
+    color: #111827;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    padding: 0 0.3rem;
+}
+
+#nav-bar button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+#nav-counter {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #374151;
+    white-space: nowrap;
+}
+
+#nav-student {
+    font-size: 0.82rem;
+    color: #374151;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+#nav-student .nav-hallgato {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+#nav-student .nav-konzulens {
+    color: #6b7280;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+#nav-version {
+    font-size: 0.68rem;
+    color: #9ca3af;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+/* ── filter bar ── */
+#filter-bar {
+    flex-shrink: 0;
+    background: #f9fafb;
+    padding: 0.2rem 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.filters-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-left: 0.35rem;
+    margin-right: 0.15rem;
+    color: #374151;
+}
+
+.filter-toggle {
+    padding: 0.1rem 0.45rem;
+    border: 1px solid #9ca3af;
+    border-radius: 0.3rem;
+    cursor: pointer;
+    background: #f3f4f6;
+    color: #111827;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.filter-toggle.active {
+    background: #1f2937;
+    color: #fff;
+    border-color: #1f2937;
+}
+
+/* ── review form body ── */
+#review-fields {
+    padding: 1rem;
+    overflow: auto;
+    flex: 1;
+}
+
+#review-fields .field {
+    margin-bottom: 0.75rem;
+}
+
+#review-fields label {
+    display: block;
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-bottom: 0.2rem;
+    color: #374151;
+}
+
+#review-fields input[type="text"],
+#review-fields select,
+#review-fields textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.25rem;
+    padding: 0.3rem 0.4rem;
+}
+
+#review-fields textarea {
+    resize: vertical;
+}
+
+.decision-review-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.decision-block {
+    min-width: 12rem;
+}
+
+.decision-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.decision-btn {
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 0.35rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    cursor: pointer;
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+.decision-btn.ok {
+    color: #15803d;
+}
+
+.decision-btn.notok {
+    color: #b91c1c;
+}
+
+.decision-btn.active.ok {
+    border-color: #15803d;
+    background: #dcfce7;
+}
+
+.decision-btn.active.notok {
+    border-color: #b91c1c;
+    background: #fee2e2;
+}
+
+#decision-text {
+    font-size: 0.78rem;
+    color: #6b7280;
+    margin-left: 0.1rem;
+    display: inline-flex;
+    align-items: center;
+    height: 2.2rem;
+}
+
+.reviewer-block {
+    min-width: 13rem;
+}
+
+#review-message {
+    margin-top: 0.8rem;
+    color: #166534;
+    font-weight: 600;
+    display: none;
+}
+
+/* ── buttons ── */
+.mode-toggle {
+    background: #1d4ed8;
+    border: 1px solid #1e40af;
+    color: #fff;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.85em;
+    line-height: 1.4;
+    border-radius: 0.3rem;
+    cursor: pointer;
+}
+
+.save-button {
+    background: #b91c1c;
+    border: 1px solid #991b1b;
+    color: #fff;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.85em;
+    line-height: 1.4;
+    border-radius: 0.3rem;
+    cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div id="review-wrap">
+    <div id="toolbar">
+        <button type="button" class="mode-toggle" onclick="parent.switchMode('browse')">Browse</button>
+        <button type="button" class="save-button" onclick="saveReview()">Save Review</button>
+        <span class="filters-label">Filters</span>
+        <button type="button" class="filter-toggle active" id="ok-filter-toggle"     onclick="toggleFilter('ok')"    aria-pressed="true">OK</button>
+        <button type="button" class="filter-toggle active" id="not-ok-filter-toggle" onclick="toggleFilter('notok')" aria-pressed="true">Not OK</button>
+        <button type="button" class="filter-toggle active" id="undef-filter-toggle"  onclick="toggleFilter('undef')" aria-pressed="true">undef</button>
+        <button type="button" class="filter-toggle"        id="last-filter-toggle"   onclick="toggleFilter('last')"  aria-pressed="false">last</button>
+    </div>
+
+    <div id="nav-bar">
+        <button type="button" id="nav-first"  onclick="goTo(0)"                    title="First">&#x21E4;</button>
+        <button type="button" id="nav-prev"   onclick="goTo(currentIdx-1)"          title="Previous">&#x276E;</button>
+        <span id="nav-counter">–/–</span>
+        <button type="button" id="nav-next"   onclick="goTo(currentIdx+1)"          title="Next">&#x276F;</button>
+        <button type="button" id="nav-last"   onclick="goTo(filteredDocs.length-1)" title="Last">&#x21E5;</button>
+        <span id="nav-student">
+            <span class="nav-hallgato" id="nav-hallgato"></span>
+            <span class="nav-konzulens" id="nav-konzulens"></span>
+        </span>
+        <span id="nav-version"></span>
+    </div>
+
+    <div id="review-fields">
+        <div class="field">
+            <label for="reviews-summary">Reviews</label>
+            <textarea id="reviews-summary" rows="7" readonly placeholder="No reviews yet."></textarea>
+        </div>
+        <div class="field decision-review-row">
+            <div class="decision-block">
+                <label>Decision</label>
+                <div class="decision-buttons">
+                    <button type="button" id="decision-ok" class="decision-btn ok" onclick="setDecision('ok')">&#10003;</button>
+                    <button type="button" id="decision-notok" class="decision-btn notok" onclick="setDecision('not_ok')">&#10007;</button>
+                    <span id="decision-text">undef</span>
+                </div>
+            </div>
+            <div class="reviewer-block">
+                <label for="reviewer-select">Reviewer</label>
+                <select id="reviewer-select" onchange="onReviewerChange()">
+                    <option value="ekovacsG">KovacsG</option>
+                    <option value="eGuszti">Guszti</option>
+                    <option value="eGume">Gume</option>
+                    <option value="ePali">Pali</option>
+                </select>
+            </div>
+        </div>
+        <div class="field">
+            <label for="notes" id="notes-label">Review Notes</label>
+            <textarea id="notes" name="notes" rows="7" placeholder="Write your review notes here."></textarea>
+        </div>
+        <div id="review-message">Review saved.</div>
+    </div>
+</div>
+
+<script>
+function setCookie(name, value) {
+    document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; SameSite=Lax';
+}
+function getCookie(name) {
+    var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
+}
+
+var allDocs      = [];
+var filteredDocs = [];
+var currentIdx   = -1;
+
+var filterOK    = true;
+var filterNotOK = true;
+var filterUndef = true;
+var filterLast  = false;
+var currentReviewerField = 'ekovacsG';
+var currentDecision = '';
+
+var reviewerNames = {
+    ekovacsG: 'KovacsG',
+    eGuszti: 'Guszti',
+    eGume: 'Gume',
+    ePali: 'Pali'
+};
+
+function normalizeStatus(s) {
+    return (s || '').toString().trim().toLowerCase();
+}
+
+function passesFilter(doc) {
+    var status  = normalizeStatus(doc.status_raw);
+    var isOK    = status === 'ok';
+    var isNotOK = status === 'not ok';
+    var isUndef = !isOK && !isNotOK;
+    if (filterLast && !doc.is_last) return false;
+    if (isOK)    return filterOK;
+    if (isNotOK) return filterNotOK;
+    return filterUndef;
+}
+
+function applyFilter() {
+    saveCurrentDocForm();
+    currentIdx = -1;
+    filteredDocs = allDocs.filter(passesFilter);
+    goTo(0);
+}
+
+function currentDoc() {
+    if (currentIdx < 0 || currentIdx >= filteredDocs.length) return null;
+    return filteredDocs[currentIdx];
+}
+
+function decisionFromStatus(statusRaw) {
+    var s = normalizeStatus(statusRaw);
+    if (s === 'ok') return 'ok';
+    if (s === 'not ok') return 'not_ok';
+    return '';
+}
+
+function statusFromDecision(decision) {
+    if (decision === 'ok') return 'OK';
+    if (decision === 'not_ok') return 'Not OK';
+    return '';
+}
+
+function refreshDecisionUi() {
+    var okBtn = document.getElementById('decision-ok');
+    var notOkBtn = document.getElementById('decision-notok');
+    var text = document.getElementById('decision-text');
+
+    okBtn.classList.toggle('active', currentDecision === 'ok');
+    notOkBtn.classList.toggle('active', currentDecision === 'not_ok');
+
+    if (currentDecision === 'ok') text.textContent = 'OK';
+    else if (currentDecision === 'not_ok') text.textContent = 'Not OK';
+    else text.textContent = 'undef';
+}
+
+function setDecision(decision) {
+    currentDecision = currentDecision === decision ? '' : decision;
+    refreshDecisionUi();
+    saveCurrentDocForm();
+}
+
+function updateNotesLabel() {
+    var label = reviewerNames[currentReviewerField] || 'Reviewer';
+    document.getElementById('notes-label').textContent = 'Review Notes (' + label + ')';
+}
+
+function centeredVersionSeparator(verzioRaw) {
+    var label = '--- v' + (verzioRaw || 0) + ' ---';
+    var width = 26;
+    if (label.length >= width) return label;
+    var pad = Math.floor((width - label.length) / 2);
+    return ' '.repeat(pad) + label;
+}
+
+function updateReviewsSummary() {
+    var doc = currentDoc();
+    var out = document.getElementById('reviews-summary');
+    if (!out) return;
+    if (!doc) {
+        out.value = '';
+        return;
+    }
+
+    var lines = [];
+    var hallgatoKey = (doc.hallgato || '').toString();
+    var konzulensKey = (doc.konzulens || '').toString();
+    var currentVerzio = parseInt(doc.verzio_raw, 10) || 0;
+
+    var history = allDocs.filter(function(d) {
+        var v = parseInt(d.verzio_raw, 10) || 0;
+        return (d.hallgato || '') === hallgatoKey &&
+               (d.konzulens || '') === konzulensKey &&
+               v <= currentVerzio;
+    }).sort(function(a, b) {
+        return (parseInt(a.verzio_raw, 10) || 0) - (parseInt(b.verzio_raw, 10) || 0);
+    });
+
+    history.forEach(function(hdoc) {
+        var ver = parseInt(hdoc.verzio_raw, 10) || 0;
+        var block = [];
+        Object.keys(reviewerNames).forEach(function(field) {
+            var text = (hdoc[field] || '').toString().trim();
+            if (text) block.push(reviewerNames[field] + ': ' + text);
+        });
+        if (block.length) {
+            if (lines.length) lines.push('');
+            lines.push(centeredVersionSeparator(ver));
+            Array.prototype.push.apply(lines, block);
+        }
+    });
+
+    out.value = lines.join('\n');
+}
+
+function saveCurrentDocForm() {
+    var doc = currentDoc();
+    if (!doc) return;
+    doc[currentReviewerField] = document.getElementById('notes').value;
+    doc.status_raw = statusFromDecision(currentDecision);
+    updateReviewsSummary();
+}
+
+function loadCurrentDocForm() {
+    var doc = currentDoc();
+    if (!doc) {
+        document.getElementById('notes').value = '';
+        currentDecision = '';
+        refreshDecisionUi();
+        updateNotesLabel();
+        updateReviewsSummary();
+        return;
+    }
+
+    currentDecision = decisionFromStatus(doc.status_raw);
+    document.getElementById('notes').value = doc[currentReviewerField] || '';
+    refreshDecisionUi();
+    updateNotesLabel();
+    updateReviewsSummary();
+}
+
+function onReviewerChange() {
+    saveCurrentDocForm();
+    currentReviewerField = document.getElementById('reviewer-select').value;
+    setCookie('dipterv_reviewer', currentReviewerField);
+    loadCurrentDocForm();
+}
+
+function setFilterButtonState(id, active) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+}
+
+function refreshFilterButtons() {
+    setFilterButtonState('ok-filter-toggle',     filterOK);
+    setFilterButtonState('not-ok-filter-toggle', filterNotOK);
+    setFilterButtonState('undef-filter-toggle',  filterUndef);
+    setFilterButtonState('last-filter-toggle',   filterLast);
+}
+
+function toggleFilter(which) {
+    if (which === 'ok')    filterOK    = !filterOK;
+    if (which === 'notok') filterNotOK = !filterNotOK;
+    if (which === 'undef') filterUndef = !filterUndef;
+    if (which === 'last')  filterLast  = !filterLast;
+    refreshFilterButtons();
+    applyFilter();
+}
+
+$.getJSON('data.php', function(data) {
+    data.sort(function(a, b) {
+        return (a.hallgato || '').localeCompare(b.hallgato || '', undefined, { sensitivity: 'base' });
+    });
+
+    var maxVerzio = {};
+    data.forEach(function(d) {
+        d.verzio_raw = parseInt(d.verzio, 10) || 0;
+        d.status_raw = d.status || '';
+        var k = d.hallgato || '';
+        if (maxVerzio[k] === undefined || d.verzio_raw > maxVerzio[k]) maxVerzio[k] = d.verzio_raw;
+    });
+    data.forEach(function(d) {
+        d.is_last = (d.verzio_raw === maxVerzio[d.hallgato || '']);
+    });
+
+    allDocs = data;
+
+    // Restore reviewer selection from cookie
+    var savedReviewer = getCookie('dipterv_reviewer');
+    if (savedReviewer && reviewerNames[savedReviewer]) {
+        currentReviewerField = savedReviewer;
+        document.getElementById('reviewer-select').value = savedReviewer;
+    }
+
+    applyFilter();
+}).fail(function() {
+    document.getElementById('nav-counter').textContent = 'error';
+});
+
+function goTo(idx) {
+    saveCurrentDocForm();
+    if (!filteredDocs.length) {
+        currentIdx = -1;
+        document.getElementById('nav-counter').textContent   = '0/0';
+        document.getElementById('nav-hallgato').textContent  = '';
+        document.getElementById('nav-konzulens').textContent = '';
+        document.getElementById('nav-version').textContent   = '';
+        loadCurrentDocForm();
+        updateNavButtons();
+        return;
+    }
+    idx = Math.max(0, Math.min(filteredDocs.length - 1, idx));
+    currentIdx = idx;
+
+    var doc = filteredDocs[currentIdx];
+    var verzioLabel = doc.verzio_raw ? 'v' + doc.verzio_raw : '';
+
+    document.getElementById('nav-counter').textContent    = (currentIdx + 1) + '/' + filteredDocs.length;
+    document.getElementById('nav-hallgato').textContent   = (doc.hallgato || '') + (doc.szint ? ' (' + doc.szint + ')' : '');
+    document.getElementById('nav-konzulens').textContent  = doc.konzulens || '';
+    document.getElementById('nav-version').textContent    = verzioLabel;
+
+    if (doc.filename && parent.displayFK) {
+        parent.displayFK(doc.filename);
+    }
+
+    loadCurrentDocForm();
+    updateNavButtons();
+}
+
+function updateNavButtons() {
+    var none = filteredDocs.length === 0;
+    document.getElementById('nav-first').disabled = none || currentIdx <= 0;
+    document.getElementById('nav-prev').disabled  = none || currentIdx <= 0;
+    document.getElementById('nav-next').disabled  = none || currentIdx >= filteredDocs.length - 1;
+    document.getElementById('nav-last').disabled  = none || currentIdx >= filteredDocs.length - 1;
+}
+
+function saveReview() {
+    saveCurrentDocForm();
+    var doc = currentDoc();
+    if (!doc || !doc.filename) return;
+
+    var fn = doc.filename;
+    var postData = {};
+    Object.keys(reviewerNames).forEach(function(field) {
+        postData[field + '_' + fn] = doc[field] || '';
+    });
+    if (doc.status_raw) {
+        postData['status_' + fn] = doc.status_raw;
+    }
+
+    var msg = document.getElementById('review-message');
+    $.post('update.php', postData)
+        .done(function() {
+            msg.style.color = '#166534';
+            msg.textContent = 'Review saved.';
+            msg.style.display = 'block';
+            setTimeout(function() { msg.style.display = 'none'; }, 3000);
+        })
+        .fail(function() {
+            msg.style.color = '#b91c1c';
+            msg.textContent = 'Save failed.';
+            msg.style.display = 'block';
+            setTimeout(function() { msg.style.display = 'none'; }, 4000);
+        });
+}
+
+refreshFilterButtons();
+refreshDecisionUi();
+updateNotesLabel();
+</script>
+</body>
+</html>

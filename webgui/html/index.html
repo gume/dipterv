@@ -1,452 +1,238 @@
-<!DOCTYPE html>	
+<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.0.428/pdf.min.js"></script>
-<!-- DataTables instead of Dynatable -->
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mini.css/2.3.4/mini-default.min.css">
-<!-- keep mini.css -->
 <style type="text/css">
-.fk {
-	background:url(google_docs.png);
-	background-size: 40px 40px;
-	background-repeat: no-repeat;
-	width:40px;
-	height:40px;
-	padding:0px !important;
-	margin:0px !important;}
-.tbt {
-    border-collapse: collapse;
-	border-width: 0px;}
-.tbt td {	
-	border:0px !important;
-	padding:0px !important;}
-#feladatkiirasok td {
-	line-height:1.2 !important;
-	padding: 0.2rem !important;}
+html, body, #content {
+    height: 100%;
+    margin: 0;
+}
+
 #left {
     float: left;
     width: 50%;
-    background: gray;
     height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    border-right: 1px solid #d1d5db;
+    box-sizing: border-box;
 }
 
-#toolbar {
-    flex-shrink: 0;
-    background: #f3f4f6;
-    padding: 0.25rem 0.4rem;
-    border-bottom: 1px solid #d1d5db;
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.2rem;
+#mode-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
 }
 
-#update-form {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    min-height: 0;
-}
-
-#table-wrapper {
-    flex: 1;
-    overflow: auto;
-    min-height: 0;
-}
 #right {
     float: left;
     width: 50%;
     height: 100%;
-    overflow: scroll;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
 }
 
-#content, html, body {
-    height: 98%;
+#pdf-scroll {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    padding: 0.5rem;
+    box-sizing: border-box;
 }
 
-.status-cell {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	width: 60px;
-}
-.status-cell-top {
-	display: flex;
-	flex-direction: row;
-	justify-content: space-between;
-}
-.status-cell-ok {
-	color: green;
-	font-weight: bold;
-	font-size: 1.2em;
-}
-.status-cell-no {
-	color: red;
-	font-weight: bold;
-	font-size: 1.2em;
-}
-.status-cell-bottom {
-	text-align: center;
-	font-size: 0.9em;
-	border-top: 1px solid #ccc;
-	margin-top: 2px;
+#pdf-controls {
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.4rem;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+    pointer-events: auto;
 }
 
-#update-popup {
-	position: fixed;
-	top: 1rem;
-	right: 1rem;
-	max-width: 320px;
-	background: #1f2937;
-	color: #fff;
-	padding: 0.9rem 1rem;
-	border-radius: 0.5rem;
-	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-	z-index: 9999;
-	display: none;
+#pdf-controls button {
+    min-width: 2rem;
+    height: 2rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.3rem;
+    background: #ffffff;
+    color: #111827;
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
 }
 
-#update-popup .popup-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 0.75rem;
+#pdf-controls button:disabled {
+    cursor: default;
+    opacity: 0.45;
 }
 
-#update-popup button {
-	background: transparent;
-	border: 1px solid #9ca3af;
-	color: #fff;
-	padding: 0.2rem 0.5rem;
-	border-radius: 0.3rem;
-	cursor: pointer;
+#zoom-level {
+    min-width: 3.5rem;
+    text-align: center;
+    font: 600 0.85rem Arial, sans-serif;
+    color: #111827;
 }
 
-.filter-toggle {
-	margin-left: 0.15rem;
-	padding: 0.1rem 0.45rem;
-	border: 1px solid #9ca3af;
-	border-radius: 0.3rem;
-	cursor: pointer;
-	background: #f3f4f6;
-	color: #111827;
-	font-size: 0.85em;
-	line-height: 1.4;
+#the-canvas {
+    border: 1px solid black;
+    display: block;
 }
 
-.filter-toggle.active {
-	background: #1f2937;
-	color: #fff;
-	border-color: #1f2937;
-}
+@media (max-width: 960px) {
+    #left, #right {
+        float: none;
+        width: 100%;
+    }
 
-#update-form input[type="submit"] {
-	background: #b91c1c;
-	border: 1px solid #991b1b;
-	color: #fff;
-	padding: 0.1rem 0.55rem;
-	font-size: 0.85em;
-	line-height: 1.4;
-	border-radius: 0.3rem;
-	cursor: pointer;
-}
+    #left {
+        height: 58%;
+    }
 
-.filters-label {
-	margin-left: 0.4rem;
-	margin-right: 0.1rem;
-	font-weight: 600;
+    #right {
+        height: 42%;
+    }
 }
 </style>
 </head>
-
 <body>
+<div id="content">
+    <div id="left">
+        <iframe id="mode-frame" name="mode-frame" src=""></iframe>
+    </div>
+
+    <div id="right">
+        <div id="pdf-controls" aria-label="PDF zoom controls">
+            <button type="button" id="zoom-out" onclick="changePdfZoom(-0.1)">-</button>
+            <button type="button" id="zoom-reset" onclick="resetPdfZoom()">100%</button>
+            <button type="button" id="zoom-in" onclick="changePdfZoom(0.1)">+</button>
+            <span id="zoom-level">120%</span>
+        </div>
+        <div id="pdf-scroll">
+            <canvas id="the-canvas"></canvas>
+        </div>
+    </div>
+</div>
 
 <script>
-
 pdfjsDistBuildPdf.GlobalWorkerOptions.workerSrc =
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.0.428/pdf.worker.min.js';
 
-function displayFK(filename) {
-	var loadingTask = pdfjsDistBuildPdf.getDocument('descriptions/'+filename);
-	loadingTask.promise.then(function(pdf) {
-		var pageNumber = 1;
-		pdf.getPage(pageNumber).then(function(page) {
-			var scale = 1.2;
-			var viewport = page.getViewport(scale);
-			var canvas = document.getElementById('the-canvas');
-			var context = canvas.getContext('2d');
-			canvas.height = viewport.height;
-			canvas.width = viewport.width;
-			var renderContext = {
-				canvasContext: context,
-				viewport: viewport
-			};
-			var renderTask = page.render(renderContext);
-			renderTask.then(function () {
-				console.log('Page rendered');
-			});
-		});
-	});
-	
-	return false;
+function setCookie(name, value) {
+    document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; SameSite=Lax';
+}
+function getCookie(name) {
+    var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[1]) : null;
 }
 
-function setStatus(filename, status, row, element) {
-	var statusText = status === 'ok' ? 'OK' : 'Not OK';
-	var statusTextElement = document.getElementById(`status-text-${filename}`);
-	statusTextElement.textContent = statusText;
-	var statusTextElement = document.getElementById(`status-input-${filename}`);
-	statusTextElement.value = statusText;
+var currentMode = getCookie('dipterv_mode') || 'browse';
+var currentPdf = null;
+var currentPageNumber = 1;
+var currentZoom = parseFloat(getCookie('dipterv_zoom')) || 1.2;
+var currentRenderTask = null;
 
-	console.log(element);
+// Set iframe to last-used mode
+(function() {
+    var frame = document.getElementById('mode-frame');
+    if (frame) frame.src = currentMode + '.html';
+})();
+
+function updateZoomUi() {
+    var zoomPercent = Math.round(currentZoom * 100);
+    var zoomLabel = document.getElementById('zoom-level');
+    var zoomOutButton = document.getElementById('zoom-out');
+    var zoomInButton = document.getElementById('zoom-in');
+    var zoomResetButton = document.getElementById('zoom-reset');
+    var hasPdf = !!currentPdf;
+
+    zoomLabel.textContent = zoomPercent + '%';
+    zoomOutButton.disabled = !hasPdf || currentZoom <= 0.4;
+    zoomInButton.disabled = !hasPdf || currentZoom >= 3;
+    zoomResetButton.disabled = !hasPdf;
 }
 
-var filterOK = true;
-var filterNotOK = true;
-var filterUndef = true;
-var filterLast = true;
-var table = null;
-var updatePopupTimer = null;
+function renderCurrentPdfPage() {
+    if (!currentPdf) return;
 
-function hideUpdatePopup() {
-	if (updatePopupTimer) {
-		clearTimeout(updatePopupTimer);
-		updatePopupTimer = null;
-	}
-	var popup = document.getElementById('update-popup');
-	if (popup) popup.style.display = 'none';
-}
+    currentPdf.getPage(currentPageNumber).then(function(page) {
+        var viewport = page.getViewport(currentZoom);
+        var canvas = document.getElementById('the-canvas');
+        var context = canvas.getContext('2d');
 
-function showUpdatePopup(message) {
-	var popup = document.getElementById('update-popup');
-	var popupText = document.getElementById('update-popup-text');
-	if (!popup || !popupText) return;
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
-	popupText.textContent = message;
-	popup.style.display = 'block';
+        if (currentRenderTask && currentRenderTask.cancel) {
+            currentRenderTask.cancel();
+        }
 
-	if (updatePopupTimer) clearTimeout(updatePopupTimer);
-	updatePopupTimer = setTimeout(function () {
-		hideUpdatePopup();
-	}, 4000);
-}
-
-function initUpdatePopup() {
-	var form = document.getElementById('update-form');
-	var dismissButton = document.getElementById('update-popup-dismiss');
-	if (!form || !dismissButton) return;
-
-	form.addEventListener('submit', function () {
-		showUpdatePopup('Update request sent.');
-	});
-
-	dismissButton.addEventListener('click', function () {
-		hideUpdatePopup();
-	});
-}
-
-function setFilterButtonState(buttonId, enabled) {
-	var button = document.getElementById(buttonId);
-	if (!button) return;
-	button.classList.toggle('active', enabled);
-	button.setAttribute('aria-pressed', enabled ? 'true' : 'false');
-}
-
-function refreshFilterButtons() {
-	setFilterButtonState('ok-filter-toggle', filterOK);
-	setFilterButtonState('not-ok-filter-toggle', filterNotOK);
-	setFilterButtonState('undef-filter-toggle', filterUndef);
-	setFilterButtonState('last-filter-toggle', filterLast);
-}
-
-function normalizeStatus(status) {
-	return (status || '').toString().trim().toLowerCase();
-}
-
-function applyStatusFilter() {
-	if (!table) return;
-
-	$.fn.dataTable.ext.search = [];
-	$.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-		var row = table.row(dataIndex).data();
-		if (!row) return true;
-
-		var status = normalizeStatus(row.status_raw);
-		var isOK = status === 'ok';
-		var isNotOK = status === 'not ok';
-		var isUndef = !isOK && !isNotOK;
-
-		if (filterLast && !row.is_last) return false;
-
-		if (isOK) return filterOK;
-		if (isNotOK) return filterNotOK;
-		return filterUndef;
-	});
-
-	table.draw();
-}
-
-function toggleOKFilter() {
-	filterOK = !filterOK;
-	refreshFilterButtons();
-	applyStatusFilter();
-}
-
-function toggleNotOKFilter() {
-	filterNotOK = !filterNotOK;
-	refreshFilterButtons();
-	applyStatusFilter();
-}
-
-function toggleUndefFilter() {
-	filterUndef = !filterUndef;
-	refreshFilterButtons();
-	applyStatusFilter();
-}
-
-function toggleLastFilter() {
-	filterLast = !filterLast;
-	refreshFilterButtons();
-	applyStatusFilter();
-}
-
-window.onload = function () {
-	initUpdatePopup();
-	refreshFilterButtons();
-		
-    $.getJSON("data.php", function(data) {
-	
-		for (i=0; i<data.length; i++) {
-			button = '<button class="fk" onclick="return displayFK(\'' +
-				data[i].filename + '\');"></button>';
-			data[i].hallgato_raw = data[i].hallgato;
-			data[i].verzio_raw = parseInt(data[i].verzio) || 0;
-			var verzioLabel = data[i].verzio_raw ? 'v' + data[i].verzio_raw : '';
-			hidden = '<span ' + data[i].hallgato + '</span>';
-			data[i].hallgato = '<table class="tbt" cellpadding="0" cellspacing="0" border="0"><tr>' +
-				'<td class="tbd" style="width:40px!important;padding:0px">' + hidden + button + '</td>' +
-				'<td class="tbd">' + data[i].hallgato_raw + ' (' + data[i].szint + ')</td>' +
-				'<td class="tbd" style="padding:0 5px;font-size:0.8em;color:#555;white-space:nowrap">' + verzioLabel + '</td>' +
-				'</tr></table>';
-			if (data[i].ekovacsG == null) data[i].ekovacsG = "";
-			data[i].ekovacsG = '<textarea class="input" rows="2" cols="7" name="ekovacsG_' + data[i].filename + '">' + data[i].ekovacsG + '</textarea>';
-			if (data[i].eGuszti == null) data[i].eGuszti = "";
-			data[i].eGuszti = '<textarea class="input" rows="2" cols="7" name="eGuszti_' + data[i].filename + '">' + data[i].eGuszti + '</textarea>';
-			if (data[i].eGume == null) data[i].eGume = "";
-			data[i].eGume = '<textarea class="input" rows="2" cols="7" name="eGume_' + data[i].filename + '">' + data[i].eGume + '</textarea>';
-			if (data[i].ePali == null) data[i].ePali = "";
-			data[i].ePali = '<textarea class="input" rows="2" cols="7" name="ePali_' + data[i].filename + '">' + data[i].ePali + '</textarea>';
-			data[i].status_raw = data[i].status;
-			data[i].status = `
-				<div class="status-cell">
-					<span ${data[i].status_raw}></span>
-					<div class="status-cell-top">
-						<span class="status-cell-ok" style="cursor:pointer;" onclick="setStatus(\'${data[i].filename}\', 'ok', ${i}, this)">&#10003;</span>
-						<span class="status-cell-no" style="cursor:pointer;" onclick="setStatus(\'${data[i].filename}\', 'no', ${i}, this)">&#10007;</span>
-					</div>
-					<div class="status-cell-bottom" id="status-text-${data[i].filename}">
-						${data[i].status_raw || ''}
-					</div>
-					<input type="hidden" name="status_${data[i].filename}" id="status-input-${data[i].filename}" value="${data[i].status || ''}">
-				</div>
-			`;
-		}
-
-		// compute is_last flag: for each student, mark only the row with the max verzio
-		var maxVerzioMap = {};
-		for (var j = 0; j < data.length; j++) {
-			var key = data[j].hallgato_raw;
-			if (maxVerzioMap[key] === undefined || data[j].verzio_raw > maxVerzioMap[key]) {
-				maxVerzioMap[key] = data[j].verzio_raw;
-			}
-		}
-		for (var j = 0; j < data.length; j++) {
-			data[j].is_last = (data[j].verzio_raw === maxVerzioMap[data[j].hallgato_raw]);
-		}
-
-		// initialize DataTables with provided records
-		table = $('#feladatkiirasok').DataTable({
-			data: data,
-			columns: [
-				{ data: 'hallgato' },
-				{ data: 'konzulens' },
-				{ data: 'ekovacsG' },
-				{ data: 'eGuszti' },
-				{ data: 'eGume' },
-				{ data: 'ePali' },
-				{ data: 'status' }
-			],
-			pageLength: 100,
-			// allow HTML in cells
-			// keep HTML as-is (do not force escape)
-			// (removed render: text() which escaped HTML)
-            dom: 'lfrtip',
-            deferRender: true
+        currentRenderTask = page.render({
+            canvasContext: context,
+            viewport: viewport
         });
-		// we inserted HTML strings; tell DataTables to render them as HTML by replacing default render
-		$('#feladatkiirasok').on('draw.dt', function() {
-			// no-op placeholder if any post-draw handling required
-		});
-		applyStatusFilter();
-     })
-     .error(function(jqXHR, textStatus, errorThrown) {
-           console.log("error " + textStatus);
-           console.log("incoming Text " + jqXHR.responseText);
-         })
- };
+
+        currentRenderTask.promise.then(function() {
+            currentRenderTask = null;
+        }).catch(function(error) {
+            currentRenderTask = null;
+            if (error && error.name !== 'RenderingCancelledException') {
+                console.log(error);
+            }
+        });
+    });
+
+    updateZoomUi();
+}
+
+function switchMode(mode) {
+    var nextMode = mode === 'review' ? 'review' : 'browse';
+    if (currentMode === nextMode) return;
+
+    currentMode = nextMode;
+    setCookie('dipterv_mode', nextMode);
+    var frame = document.getElementById('mode-frame');
+    frame.src = nextMode + '.html';
+}
+
+function displayFK(filename) {
+    var loadingTask = pdfjsDistBuildPdf.getDocument('descriptions/' + filename);
+    loadingTask.promise.then(function(pdf) {
+        currentPdf = pdf;
+        currentPageNumber = 1;
+        renderCurrentPdfPage();
+    });
+
+    return false;
+}
+
+function changePdfZoom(delta) {
+    if (!currentPdf) return;
+
+    currentZoom = Math.max(0.4, Math.min(3, Math.round((currentZoom + delta) * 10) / 10));
+    setCookie('dipterv_zoom', currentZoom);
+    renderCurrentPdfPage();
+}
+
+function resetPdfZoom() {
+    if (!currentPdf) return;
+
+    currentZoom = 1;
+    setCookie('dipterv_zoom', currentZoom);
+    renderCurrentPdfPage();
+}
+
+window.switchMode = switchMode;
+window.displayFK = displayFK;
+window.changePdfZoom = changePdfZoom;
+window.resetPdfZoom = resetPdfZoom;
+updateZoomUi();
 </script>
-
-<div id="content">
-<div id="left">
-<div id="update-popup" role="status" aria-live="polite">
-	<div class="popup-row">
-		<span id="update-popup-text">Update request sent.</span>
-		<button type="button" id="update-popup-dismiss">Dismiss</button>
-	</div>
-</div>
-<iframe name="updater" style="display:none;"></iframe>
-<form id="update-form" action="update.php" method="POST" target="updater">
-<div id="toolbar">
-<input type="submit" value="Update">
-<span class="filters-label">Filters</span>
-<button type="button" class="filter-toggle active" id="ok-filter-toggle" onclick="toggleOKFilter()" aria-pressed="true">OK</button>
-<button type="button" class="filter-toggle active" id="not-ok-filter-toggle" onclick="toggleNotOKFilter()" aria-pressed="true">Not OK</button>
-<button type="button" class="filter-toggle active" id="undef-filter-toggle" onclick="toggleUndefFilter()" aria-pressed="true">undef</button>
-<button type="button" class="filter-toggle active" id="last-filter-toggle" onclick="toggleLastFilter()" aria-pressed="true">last</button>
-</div>
-<div id="table-wrapper">
-<table id="feladatkiirasok">
-<thead>
-    <tr>
-      <th data-dynatable-column="hallgato">Hallgató</th>
-      <th data-dynatable-column="konzulens">Konzulens</th>
-      <th data-dynatable-column="ekovacsG">KovacsG</th>
-      <th data-dynatable-column="eGuszti">Guszti</th>
-      <th data-dynatable-column="eGume">Gume</th>
-      <th data-dynatable-column="ePali">Pali</th>
-      <th data-dynatable-column="status">Status</th>
-    </tr>
-</thead>
-<tbody>
-</tbody>
-</table>
-</div>
-</form>  
-</div>
-
-<div id="right">
-<canvas id="the-canvas" style="border:1px solid black;"></canvas>
-</div>
-</div>
-
 </body>
 </html>

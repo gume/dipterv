@@ -49,6 +49,7 @@ cursor.execute(init_view_db)
 df = pd.read_excel(sys.argv[1], skiprows=3)
 for index, row in df.iterrows():
     filename = ""
+    version = 0
     st = row[u'Feladatkiírás státusza']
     if st == u'Feltöltve, tanszékvezetői jóváhagyásra vár' or st == u'Nincs beadva, mert a tanszékvezető nem hagyta jóvá':
         rf = re.search('Theses/(.*)/', row[u'Téma oktatói szerkesztő oldalának címe (URL) a portálon'])
@@ -64,50 +65,24 @@ for index, row in df.iterrows():
                     if num > max_num:
                         max_num = num
             filename = f"{filename}-Feladatkiiras-{max_num}.pdf" if max_num > 0 else ""
-        hallgato = row[u'Hallgató neve']
-        konzulens = row[u'Konzulens neve']
-        szint = row[u'Képzés']
-        print (f"{index}, {filename}, {hallgato}, {konzulens}, {szint}")
-
-        # UPSERT: replace existing row with same id (or insert new)
-        add_row = ("INSERT OR REPLACE INTO dipterv "
-                   "(id, filename, hallgato, konzulens, szint) "
-                   "VALUES (?, ?, ?, ?, ?);")
-        # use plain strings (no .encode)
-        data_row = (int(index), filename, str(hallgato), str(konzulens), str(szint))
-        cursor.execute(add_row, data_row)
 
         # Extract base name and number from filename
         match = re.match(r"(.+)-(\d+)\.pdf$", filename)
         if match:
-            base_name = match.group(1)
-            current_num = int(match.group(2))
+            version = int(match.group(2))
 
-            # Find all filenames with the same base name
-            cursor.execute("SELECT filename, status FROM dipterv WHERE filename LIKE ? AND (status NOT IN ('OK', 'OLD') OR status IS NULL)", (f"{base_name}-%",))
-            rows = cursor.fetchall()
-            print(f"Found {len(rows)} entries for base name {base_name}")
-            if len(rows) >= 2:
+        hallgato = row[u'Hallgató neve']
+        konzulens = row[u'Konzulens neve']
+        szint = row[u'Képzés']
+        print (f"{index}, {filename}, {version}, {hallgato}, {konzulens}, {szint}")
 
-                # Find the highest X
-                max_num = current_num
-                max_filename = filename
-                for fname, status in rows:
-                    m = re.match(rf"{re.escape(base_name)}-(\d+)\.pdf$", fname)
-                    if m:
-                        num = int(m.group(1))
-                        if num > max_num:
-                            max_num = num
-                            max_filename = fname
-                print(f"Updating statuses for base name {base_name}, keeping {max_filename} as NEW")
-
-                # Set all matching rows to OLD except the highest, which is NEW
-                for fname, status in rows:
-                    m = re.match(rf"{re.escape(base_name)}-(\d+)\.pdf$", fname)
-                    if m:
-                        num = int(m.group(1))
-                        new_status = "NEW" if fname == max_filename else "OLD"
-                        cursor.execute("UPDATE dipterv SET status=? WHERE filename=?", (new_status, fname))
+        # UPSERT: replace existing row with same id (or insert new)
+        add_row = ("INSERT OR REPLACE INTO dipterv "
+                   "(id, filename, verzio, hallgato, konzulens, szint) "
+                   "VALUES (?, ?, ?, ?, ?, ?);")
+        # use plain strings (no .encode)
+        data_row = (int(index), filename, version, str(hallgato), str(konzulens), str(szint))
+        cursor.execute(add_row, data_row)
 
 cnx.commit()
 

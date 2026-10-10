@@ -1,27 +1,16 @@
-FROM mcr.microsoft.com/playwright:v1.56.0-noble
+FROM mcr.microsoft.com/playwright:v1.64.0-noble
 
-# Install Python and dependencies
-RUN \
- rm -rf /var/lib/apt/lists/* && \
- apt-get clean && \
- apt-get update
+# Copy uv binary from the official image
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-RUN apt-get install -y python3 python3-pip python3-venv
-
-# Create virtual environment
-RUN python3 -m venv /venv
+# Set up virtual environment using uv
+RUN uv venv /venv
 ENV PATH="/venv/bin:$PATH"
 
-# Install Playwright inside the virtual environment
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir playwright && \
-    playwright install
+# Install Playwright and Python libraries into the virtual environment using uv
+RUN uv pip install --no-cache-dir playwright openpyxl pandas pypdf pymupdf pdfplumber language_tool_python google-genai pydantic && \
+    playwright install chromium
 
-RUN pip install --no-cache-dir openpyxl pandas pypdf pymupdf pdfplumber language_tool_python
-
-# Copy your script
-#COPY your_script.py /app/your_script.py
 WORKDIR /app
 
-#CMD ["python3", "your_script.py"]
 CMD ["tail", "-f", "/dev/null"]

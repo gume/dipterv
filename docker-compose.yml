@@ -11,6 +11,7 @@ services:
     working_dir: /app
     environment:
       - PYTHONUNBUFFERED=1
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     # Optional: if you want to keep the container running for debugging
     # tty: true
     ipc: host                # Recommended for Chromium stability
@@ -27,6 +28,16 @@ services:
       - ./webgui/html:/var/www/html
       - ./webgui/entrypoint.sh:/entrypoint.sh
     ports:
-      - "8080:80"
+      - "8081:80"
     entrypoint: ["/bin/bash", "/entrypoint.sh"]
     command: ["apache2-foreground"]
+
+  sqlite-web:
+    image: tomdesinto/sqliteweb
+    container_name: sqlite-web
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./data/db:/db:ro
+    command: descriptions.sqlite
+    restart: unless-stopped

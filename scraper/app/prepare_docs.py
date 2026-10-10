@@ -2,8 +2,9 @@ import asyncio
 from playwright.async_api import async_playwright
 import os
 import getpass
-from openpyxl import load_workbook
 import subprocess
+
+from create_db import load_import_rows, parse_version, sync_import_records
 
 
 local_dir = os.path.dirname(os.path.abspath(__file__))
@@ -224,7 +225,7 @@ async def fetch_description(url, cookies, save_dir):
             await download.save_as(save_path)
             print(f"Downloaded file saved to {save_path}")
             await browser.close()
-            return True
+            return suggested_filename
         except Exception as e:
             print("Download link not found or click failed:", e)
             await browser.close()
@@ -246,32 +247,37 @@ async def main():
         print("Task descriptions file was not downloaded.")
         exit(1)
 
-    # Get the links to the task descriptions
-    wb = load_workbook(filename = task_desc_path, read_only=True)
-    sheet = wb.active
+    records = load_import_rows(task_desc_path, data_dir)
+    database_path = os.path.join(db_dir, "descriptions.sqlite")
+    sync_import_records(records, database_path)
+    print(f"Found {len(records)} task descriptions needing approval.")
 
-    urls = []
-    x_value_stats = {}
+    changed_records = []
+    for record in records:
+        expected_path = os.path.join(data_dir, record["filename"])
+        if os.path.isfile(expected_path):
+            print(f"PDF already downloaded; checking database data: {record['filename']}")
+            continue
+        if not record["should_download"]:
+            print(f"PDF download skipped for portal status: {record['filename']}")
+            continue
 
-    r = 5
-    while True:
-        url = sheet['AW' + str(r)].value
-        if (url == None):
-            break
-        x_val = sheet['X' + str(r)].value
-        x_value_stats[x_val] = x_value_stats.get(x_val, 0) + 1
-        if x_val == u"Feltöltve, tanszékvezetői jóváhagyásra vár":
-            urls.append(url)
-        r = r + 1
+        print(f"PDF is missing; downloading: {record['filename']}")
+        downloaded_filename = await fetch_description(record["download_url"], cookies, data_dir)
+        if not downloaded_filename:
+            continue
 
-    print("X column value statistics:")
-    for val, count in x_value_stats.items():
-        print(f"  {val}: {count}")
-    print(f"Found {len(urls)} task description URLs needing approval.")
+        version = parse_version(downloaded_filename)
+        if version is None:
+            print(f"WARNING: Could not parse version from downloaded filename {downloaded_filename}.")
+            continue
+        updated_record = dict(record)
+        updated_record["filename"] = downloaded_filename
+        updated_record["version"] = version
+        changed_records.append(updated_record)
 
-    # Downoad each task description    
-    for i, url in enumerate(urls):
-        ok = await fetch_description(url, cookies, data_dir)
+    if changed_records:
+        sync_import_records(changed_records, database_path)
 
     # Set permissions so that the web server can read the files
     subprocess.run(["chown", "-R", "www-data:www-data", data_dir])

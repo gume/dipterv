@@ -1,0 +1,98 @@
+{
+  "template_id": "en_v1.0",
+  "language": "English",
+  "layout_spec": {
+    "university_logo": {
+      "expected_location": "Top of page, horizontally centered (approx y: 0-150, x: 300-700)",
+      "description": "University building emblem/crest centered above or alongside the header, with a head of department or tanszékvezető title block below it"
+    },
+    "footer": {
+      "expected_location": "Full page width at bottom (approx y: 850-1000)",
+      "description": "Full-width footer at the bottom of the page with a static institution hierarchy on the left, a department logo in the center, and static contact information on the right",
+      "structure": {
+        "left_text": "Static institution hierarchy (BME, Faculty, Department)",
+        "center_logo": "Department logo centered inside the footer block. Looks like a stylized brain with a network of nodes and connections",
+        "right_text": "Static contact info (Address, phone, web, email)"
+      }
+    },
+    "signature_space": {
+      "expected_location": "Blank whitespace reserved above the department head title (no printed border box required)",
+      "description": "Reserved space for the department head's signature, typically above their name",
+      "requirement": "Clean whitespace/gap left for handwritten signature; does not require a bounding box or border line"
+    }
+  },
+  "required_boilerplate": [
+    {
+      "rule_id": "header_dept_head",
+      "description": "Top department head designation",
+      "variants": ["HEAD OF DEPARTMENT", "DEPARTMENT HEAD"]
+    },
+    {
+      "rule_id": "thesis_type",
+      "description": "Type of thesis assignment",
+      "variants": [
+        "BACHELOR'S THESIS ASSIGNMENT",
+        "MASTER'S THESIS ASSIGNMENT",
+        "DIPLOMA THESIS ASSIGNMENT",
+        "MSc Thesis Task Description",
+        "BSc Thesis Task Description"
+      ]
+    },
+    {
+      "rule_id": "student_suffix",
+      "description": "Designation after student name",
+      "variants": [
+        "student in computer science engineering",
+        "engineering student",
+        "candidate for MSc degree in Computer Engineering",
+        "candidate for BSc degree in Computer Engineering"
+      ]
+    },
+    {
+      "rule_id": "task_intro",
+      "description": "Sentence introducing task bullets",
+      "variants": [
+        "The student's tasks comprise the following:",
+        "The assignment includes the following tasks:",
+        "Tasks to be performed by the student will include:"
+      ]
+    },
+    {
+      "rule_id": "supervisor_label",
+      "description": "Supervisor label",
+      "variants": [
+        "Department supervisor:",
+        "Supervisor:",
+        "Supervisor at the department:"
+      ]
+    },
+    {
+      "rule_id": "dept_head_title",
+      "description": "Title under department head name",
+      "variants": ["head of department"]
+    },
+    {
+      "rule_id": "footer_university",
+      "description": "Footer university name",
+      "variants": ["Budapest University of Technology and Economics"]
+    },
+    {
+      "rule_id": "footer_faculty",
+      "description": "Footer faculty name",
+      "variants": ["Faculty of Electrical Engineering and Informatics"]
+    },
+    {
+      "rule_id": "footer_department",
+      "description": "Footer department name",
+      "variants": [
+        "Department of Telecommunications and Artificial Intelligence",
+        "Dept. of Telecommunications and Artificial Intelligence"
+      ]
+    }
+  ],
+  "visual_elements_to_detect": [
+    {"element_type": "university_logo", "description": "University crest centered at top"},
+    {"element_type": "department_logo", "description": "Department logo centered in footer"},
+    {"element_type": "signature_space", "description": "Unsigned whitespace for department head signature"}
+  ]
+}

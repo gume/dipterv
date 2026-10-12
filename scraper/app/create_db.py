@@ -223,6 +223,7 @@ def sync_import_records(records, database_path=DATABASE_PATH):
     connection = sqlite3.connect(database_path)
     try:
         ensure_schema(connection)
+        connection.commit()
         connection.execute("BEGIN")
         for record in records:
             values = tuple(record[column] for column in IMPORT_COLUMNS)

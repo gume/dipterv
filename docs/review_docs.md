@@ -8,11 +8,11 @@ The body sent to the model is built from `extract` in this order: `thesis_title`
 
 ## Selection
 
-Candidates are `import` rows joined to `extract` rows with a non-NULL `thesis_title`. A description is pending when the model reviewer is missing any configured aspect in `reviews`. This also requeues existing reviews when new aspects are added. Results are kept per model; complete reviews are skipped. `--filename` explicitly reruns that file and replaces the model's prior aspect results.
+Candidates are `import` rows joined to `extract` rows with a non-NULL `thesis_title`. A description is pending when the model reviewer is missing any configured aspect in `reviews`, has an obsolete aspect, or lacks a row in `review_summaries`. This also requeues existing reviews when aspects are added or changed. Results are kept per model; complete reviews are skipped. `--filename` explicitly reruns that file and replaces the model's prior results.
 
 ## Results
 
-For each aspect configured in `review.aspects`, the model returns a 1-5 score and reasoning, stored in `reviews` (`reviewer` = model id, `aspect` = key, `score`, `result` = reasoning). The script gives no overall ok/notok verdict; that go/no-go decision is made by human reviewers in `review_verdict`. All rows of one document are written in a single transaction; a failed request or an incomplete answer stores nothing, so the document stays pending. See [database.md](database.md) for the tables.
+For each aspect configured in `review.aspects`, the model returns a 1-5 score and reasoning, stored in `reviews` (`reviewer` = model id, `aspect` = key, `score`, `result` = reasoning). A second model call produces a concise synthesis using the exact arithmetic mean computed from those scores. The mean and synthesis are stored in `review_summaries`, separately for each model, and the web UI shows the summary when hovering over that model's average. The script gives no overall go/no-go verdict; that decision is made by human reviewers in `review_verdict`. Aspect results and summary are written in one transaction; a failed or incomplete response stores nothing, so the description stays pending. See [database.md](database.md) for the tables.
 
 ## Usage
 
@@ -40,7 +40,7 @@ Exit code: 0 on success, 1 if any review failed (or `--filename` matched nothing
 | `llm.model`, `llm.temperature`, `llm.timeout`, `llm.retries` | Model settings; failed requests are retried with backoff (60 s on rate limiting). |
 | `review.reasoning_language` | Language requested for the reasoning. |
 | `review.system_prompt` | Strict shared 1-5 scoring anchors, evidence requirements and reviewer instructions. |
-| `[[review.aspects]]` | `key` and `prompt` of each reviewed aspect. The current rubric covers goal clarity, task specificity, scope feasibility, strict language accuracy, degree appropriateness, AI promptability, and task ambiguity. |
+| `[[review.aspects]]` | `key` and `prompt` of each reviewed aspect. The current rubric covers goal clarity, task specificity (including ambiguity), scope feasibility, strict language accuracy, degree appropriateness, and AI promptability. |
 
 ## Functions
 

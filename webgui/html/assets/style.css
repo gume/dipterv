@@ -241,6 +241,28 @@ button, input, select, textarea {
     margin-bottom: 0.15rem;
 }
 
+.ai-model-cell {
+    min-width: 7rem;
+}
+
+.ai-average-value {
+    display: inline-block;
+    margin: 0 0.2rem 0.15rem 0;
+    padding: 0 0.25rem;
+    border-radius: 0.2rem;
+    background: #e0f2fe;
+    color: #075985;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.ai-aspect-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem;
+}
+
 .ai-model {
     font-size: 0.7rem;
     color: #6b7280;

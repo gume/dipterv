@@ -128,28 +128,44 @@ var Dipterv = (function () {
         return key.split('_').map(function (part) { return part.charAt(0).toUpperCase(); }).join('');
     }
 
+    function aiAverage(doc, model) {
+        var review = doc.ai[model];
+        if (!review) return 0;
+        if (review.average_score != null) return Number(review.average_score);
+        var scores = review.aspects.filter(function (item) { return item.score != null; })
+            .map(function (item) { return Number(item.score); });
+        return scores.length ? scores.reduce(function (a, b) { return a + b; }, 0) / scores.length : 0;
+    }
+
+    function aiAspectChips(review) {
+        return review.aspects.map(function (item) {
+            var score = item.score == null ? '?' : item.score;
+            var text = item.aspect + ': ' + score + '/5\n' + (item.result || '');
+            return '<span class="chip score-' + esc(score) + '" data-tip="' + esc(text) + '">' +
+                esc(aspectLabel(item.aspect)) + ' ' + esc(score) + '</span>';
+        }).join('');
+    }
+
+    function aiModelCell(doc, model) {
+        var review = doc.ai[model];
+        if (!review) return '<span class="muted">-</span>';
+        var average = aiAverage(doc, model);
+        var summary = review.summary || ('Average ' + average.toFixed(2) + '/5. Summary not available.');
+        return '<div class="ai-model-cell"><span class="ai-average-value" data-tip="' + esc(summary) + '">' +
+            (average ? average.toFixed(2) : '') + '</span><div class="ai-aspect-list">' +
+            aiAspectChips(review) + '</div></div>';
+    }
+
     function aiScores(doc) {
         var models = Object.keys(doc.ai);
         if (!models.length) return '<span class="muted">-</span>';
         return models.map(function (model) {
-            var chips = doc.ai[model].map(function (item) {
-                var score = item.score == null ? '?' : item.score;
-                var text = item.aspect + ': ' + score + '/5\n' + (item.result || '');
-                return '<span class="chip score-' + esc(score) + '" data-tip="' + esc(text) + '">' +
-                    esc(aspectLabel(item.aspect)) + ' ' + esc(score) + '</span>';
-            }).join('');
+            var review = doc.ai[model];
             return '<div class="ai-row"><span class="ai-model" data-tip="' + esc(model) + '">' + esc(model) +
-                '</span>' + chips + '</div>';
+                '</span><span class="ai-average-value" data-tip="' + esc(review.summary || 'Summary not available.') + '">' +
+                aiAverage(doc, model).toFixed(2) + '</span><div class="ai-aspect-list">' +
+                aiAspectChips(review) + '</div></div>';
         }).join('');
-    }
-
-    function aiAverage(doc) {
-        var scores = [];
-        Object.keys(doc.ai).forEach(function (model) {
-            doc.ai[model].forEach(function (item) { if (item.score != null) scores.push(item.score); });
-        });
-        if (!scores.length) return 0;
-        return scores.reduce(function (a, b) { return a + b; }, 0) / scores.length;
     }
 
     function verdictButtons(doc) {
@@ -172,6 +188,6 @@ var Dipterv = (function () {
     return {
         state: state, esc: esc, notify: notify, loadReviewers: loadReviewers, reviewerName: reviewerName,
         setVerdict: setVerdict, saveRemark: saveRemark, formatBadge: formatBadge, aiScores: aiScores,
-        aiAverage: aiAverage, verdictButtons: verdictButtons, markLast: markLast
+        aiAverage: aiAverage, aiModelCell: aiModelCell, verdictButtons: verdictButtons, markLast: markLast
     };
 })();

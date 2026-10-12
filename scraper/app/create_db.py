@@ -188,6 +188,15 @@ def ensure_schema(connection):
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             PRIMARY KEY (neptun_code, version, reviewer, aspect)
         );
+        CREATE TABLE IF NOT EXISTS "review_summaries" (
+            neptun_code TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            reviewer TEXT NOT NULL,
+            average_score REAL NOT NULL,
+            summary TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (neptun_code, version, reviewer)
+        );
         CREATE TABLE IF NOT EXISTS "review_verdict" (
             neptun_code TEXT NOT NULL,
             version INTEGER NOT NULL,
@@ -269,7 +278,7 @@ def sync_import_records(records, database_path=DATABASE_PATH):
                     values + (current["neptun_code"], current["version"]),
                 )
                 if (current["neptun_code"], current["version"]) != (record["neptun_code"], record["version"]):
-                    for table in ("reviews", "review_verdict"):
+                    for table in ("reviews", "review_summaries", "review_verdict"):
                         connection.execute(
                             f"UPDATE {table} SET neptun_code = ?, version = ? WHERE neptun_code = ? AND version = ?",
                             (record["neptun_code"], record["version"], current["neptun_code"], current["version"]),

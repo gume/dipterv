@@ -2,6 +2,8 @@ var table = null;
 var docs = [];
 var filters = { go: true, nogo: true, undecided: true, last: false };
 var aiMode = false;
+var aiModels = [];
+var filterRegistered = false;
 
 function textOf(value) {
     return value == null ? '' : String(value);
@@ -22,20 +24,25 @@ function remarkColumn(reviewer) {
     };
 }
 
-function averageColumn() {
+function aiModelColumn(model, index) {
     return {
-        title: 'AI avg',
+        title: aiModels.length === 1 ? 'AI' : 'AI#' + (index + 1),
         data: null,
         className: 'ai-average',
+        type: 'num',
         render: function (doc, type) {
-            var score = Dipterv.aiAverage(doc);
-            if (type === 'sort' || type === 'type') return score;
-            return score ? score.toFixed(2) : '';
+            if (type !== 'display') return Dipterv.aiAverage(doc, model);
+            return Dipterv.aiModelCell(doc, model);
         }
     };
 }
 
 function buildTable() {
+    if (table) {
+        table.destroy();
+        $('#docs').empty();
+    }
+
     var columns = [
         {
             title: 'Student', data: null,
@@ -55,17 +62,16 @@ function buildTable() {
         }
     ];
 
-    if (aiMode) {
-        columns.push(averageColumn());
-        columns.push({
-            title: 'AI reviews', data: null,
-            render: function (doc, type) {
-                return type === 'display' ? Dipterv.aiScores(doc) : Dipterv.aiAverage(doc);
-            }
-        });
-    }
+    var aiColumnStart = columns.length;
+    if (aiMode) aiModels.forEach(function (model, index) {
+        columns.push(aiModelColumn(model, index));
+    });
 
-    columns = columns.concat(Dipterv.state.reviewers.map(remarkColumn), [{
+    var reviewers = Dipterv.state.reviewers.slice();
+    reviewers.sort(function (a, b) {
+        return Number(b.id === Dipterv.state.reviewer) - Number(a.id === Dipterv.state.reviewer);
+    });
+    columns = columns.concat(reviewers.map(remarkColumn), [{
         title: 'Verdict', data: null,
         render: function (doc, type) {
             return type === 'display' ? Dipterv.verdictButtons(doc) : doc.verdict;
@@ -80,16 +86,28 @@ function buildTable() {
         autoWidth: false,
         ordering: true,
         order: [],
-        deferRender: true
+        deferRender: true,
+        initComplete: function () {
+            if (!aiMode) return;
+            var api = this.api();
+            aiModels.forEach(function (model, index) {
+                var header = api.column(aiColumnStart + index).header();
+                header.setAttribute('data-tip', model);
+                header.setAttribute('title', model);
+            });
+        }
     });
 
-    $.fn.dataTable.ext.search.push(function (settings, data, index) {
-        if (settings.nTable.id !== 'docs') return true;
-        var doc = table.row(index).data();
-        if (!doc) return true;
-        if (filters.last && !doc.is_last) return false;
-        return filters[doc.verdict] !== false;
-    });
+    if (!filterRegistered) {
+        $.fn.dataTable.ext.search.push(function (settings, data, index) {
+            if (settings.nTable.id !== 'docs') return true;
+            var doc = table.row(index).data();
+            if (!doc) return true;
+            if (filters.last && !doc.is_last) return false;
+            return filters[doc.verdict] !== false;
+        });
+        filterRegistered = true;
+    }
 }
 
 function redrawRow(tr) {
@@ -132,11 +150,16 @@ $(function () {
     });
 
     var reviewersReady = Dipterv.loadReviewers(document.getElementById('reviewer-select'), function () {
-        if (table) table.rows().invalidate().draw(false);
+        if (table) buildTable();
     });
     $.when(reviewersReady, $.getJSON('data.php')).done(function (reviewers, response) {
         docs = response[0];
         Dipterv.markLast(docs);
+        var modelSet = {};
+        docs.forEach(function (doc) {
+            Object.keys(doc.ai).forEach(function (model) { modelSet[model] = true; });
+        });
+        aiModels = Object.keys(modelSet).sort();
         buildTable();
     }).fail(function () {
         Dipterv.notify('Could not load the data.', true);

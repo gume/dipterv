@@ -6,7 +6,7 @@ The application database is `descriptions.sqlite`, stored at `/db/descriptions.s
 
 The scraper and PHP web service share this mount. The scraper sets `/db` ownership to `www-data` after importing; the web service entrypoint also sets ownership of `/db` to `www-data` at startup.
 
-The database setup creates the current schema and does not migrate older databases. To move an existing database that has the old one-row-per-description `reviews` table, run `python3 /app/migrate_reviews.py` in the scraper container. It drops the old `reviews` table (refusing if it has rows unless `--force`), creates `reviews`, `review_verdict` and `reviewers`, and drops the old `dipterv` and `filtered_dipterv` compatibility views; other tables are untouched.
+The database setup creates the current schema and does not migrate older databases. To move an existing database that has the old one-row-per-description `reviews` table, run `python3 /app/migrate_reviews.py` in the scraper container. It drops the old `reviews` table (refusing if it has rows unless `--force`), creates `reviews`, `review_summaries`, `review_verdict` and `reviewers`, and drops the old `dipterv` and `filtered_dipterv` compatibility views; other tables are untouched. For an already migrated database, the script only adds the missing summary table and reviewer entries.
 
 ## Schema
 
@@ -52,6 +52,16 @@ One overall go/no-go verdict per description, decided by humans through the web 
 | `summary` | Optional note. |
 | `updated_at` | UTC timestamp. |
 
+### `review_summaries`
+
+One AI summary per description and model: primary key `(neptun_code, version, reviewer)`. `average_score` is calculated from that model's configured aspect scores; `summary` is a concise, evidence-based synthesis that includes the exact average. The web UI shows each model's average as a sortable AI column, with the summary on hover.
+
+| Column | Purpose |
+| --- | --- |
+| `average_score` | Arithmetic mean of the model's aspect scores. |
+| `summary` | Short evaluation highlighting the overall quality and any major weakness. |
+| `updated_at` | UTC timestamp. |
+
 ### `reviewers`
 
 The human reviewers offered by the web UI: `id` (primary key, used in `reviews.reviewer`) and `name` (display name). The web UI only lets the user pick an identity from this list; there is no authentication. `create_db.py` seeds `kovacsg`, `guszti`, `gume`, `pali` (`INSERT OR IGNORE`); add or rename rows with SQL.
@@ -91,8 +101,8 @@ The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQ
 | --- | --- | --- |
 | `scraper/app/prepare_docs.py` and `scraper/app/create_db.py` | Write | Read eligible task rows from Excel and reconcile the `import` table. `prepare_docs.py` syncs metadata before downloading PDFs and syncs any resulting filename changes afterward. |
 | `scraper/app/extract_docs.py` | Reads `import`; writes `extract` | Selects pending filenames from the database, sends PDFs and templates to the configured Google GenAI model, and stores structured extraction results. |
-| `scraper/app/review_docs.py` | Reads `import`, `extract`; writes `reviews` | AI review of the extracted description body; see [review_docs.md](review_docs.md). |
-| `webgui/html/data.php` | Reads | Returns one JSON object per `import` row with its `extract` format check (`template_status` and the cause list), `review_verdict`, human remarks (`reviews` aspect `remark`, keyed by reviewer) and AI scores (other aspects, keyed by model). Opens the database read-only. |
+| `scraper/app/review_docs.py` | Reads `import`, `extract`; writes `reviews`, `review_summaries` | Stores per-aspect scores/reasoning and a per-model average/summary; see [review_docs.md](review_docs.md). |
+| `webgui/html/data.php` | Reads | Returns one JSON object per `import` row with its `extract` format check (`template_status` and the cause list), `review_verdict`, human remarks (`reviews` aspect `remark`, keyed by reviewer), and AI scores/summaries/averages keyed by model. Opens the database read-only. |
 | `webgui/html/reviewers.php` | Reads | Returns the `reviewers` list. |
 | `webgui/html/body.php` | Reads | Returns the extracted description body (same text as `review_docs.py` reviews) for the text view. |
 | `webgui/html/update.php` | Writes | `action=remark`: stores or (when empty) deletes a human remark in `reviews` for the chosen reviewer. `action=verdict`: sets `review_verdict.status`. Uses prepared statements and validates the reviewer and verdict values. |

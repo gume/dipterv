@@ -41,11 +41,34 @@ foreach (fetch_all($db, 'SELECT neptun_code, version, reviewer, aspect, result, 
     if ($r['aspect'] === 'remark') {
         $docs[$i]['remarks'][$r['reviewer']] = $r['result'];
     } else {
-        $docs[$i]['ai'][$r['reviewer']][] = [
+        if (!isset($docs[$i]['ai'][$r['reviewer']])) {
+            $docs[$i]['ai'][$r['reviewer']] = [
+                'average_score' => null,
+                'summary' => '',
+                'aspects' => [],
+            ];
+        }
+        $docs[$i]['ai'][$r['reviewer']]['aspects'][] = [
             'aspect' => $r['aspect'],
             'score' => $r['score'] === null ? null : (int)$r['score'],
             'result' => $r['result'],
         ];
+    }
+}
+
+$summaryTable = fetch_all($db, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'review_summaries'");
+if ($summaryTable) {
+    foreach (fetch_all($db, 'SELECT neptun_code, version, reviewer, average_score, summary FROM review_summaries') as $summary) {
+        $key = $summary['neptun_code'] . '|' . $summary['version'];
+        if (!isset($index[$key])) {
+            continue;
+        }
+        $i = $index[$key];
+        if (!isset($docs[$i]['ai'][$summary['reviewer']])) {
+            $docs[$i]['ai'][$summary['reviewer']] = ['average_score' => null, 'summary' => '', 'aspects' => []];
+        }
+        $docs[$i]['ai'][$summary['reviewer']]['average_score'] = (float)$summary['average_score'];
+        $docs[$i]['ai'][$summary['reviewer']]['summary'] = $summary['summary'];
     }
 }
 

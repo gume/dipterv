@@ -35,7 +35,6 @@ class VisualElement(BaseModel):
 
 class ThesisAssignmentSchema(BaseModel):
 	detected_template: str
-	template_valid: bool
 	missing_boilerplate_rules: list[str]
 	layout_discrepancies: list[str]
 	header_dept_head: str | None = Field(default=None, description="Exact matched header department-head boilerplate, or null")
@@ -138,27 +137,33 @@ def load_templates(templates_dir):
 	return templates
 
 
-def pending_filenames(connection):
+def pending_filenames(connection, template_ids):
+	# Rows with problems are rechecked only when their template version changed.
+	placeholders = ", ".join("?" for _ in template_ids)
 	return [
 		row[0]
 		for row in connection.execute(
-			"""
+			f"""
 			SELECT i.filename
 			FROM "import" AS i
 			LEFT JOIN "extract" AS e ON e.filename = i.filename
 			WHERE e.filename IS NULL
+			   OR (e.template_status > 0
+			       AND (e.detected_template IS NULL
+			            OR e.detected_template NOT IN ({placeholders})))
 			ORDER BY i.row_id, i.filename
-			"""
+			""",
+			tuple(template_ids),
 		)
 	]
 
 
-def pending_pdf_filenames(connection, data_dir, limit=None):
+def pending_pdf_filenames(connection, data_dir, template_ids, limit=None):
 	if limit == 0:
 		return []
 
 	selected = []
-	for filename in pending_filenames(connection):
+	for filename in pending_filenames(connection, template_ids):
 		pdf_path = Path(data_dir) / filename
 		if not pdf_path.is_file():
 			print(f"WARNING: PDF not found for database record: {pdf_path}", file=sys.stderr)
@@ -182,7 +187,8 @@ Instructions:
 3. Check the expected layout and report any discrepancies.
 4. Extract the student name/status, thesis title, background, goal, task list, supervisor(s), department head, and issue date. Use an empty string for unavailable text; use null only for the optional cosupervisor.
 5. For each visual_elements_to_detect item in the selected template, return its element_type, whether it is present in the expected area, and its box_2d [ymin, xmin, ymax, xmax] normalized to 0-1000. Use null for box_2d when unavailable. Do not crop, encode, return, or save image data.
-6. Set template_valid to true only when the required boilerplate and layout requirements are satisfied.
+6. Report every unmatched rule and layout discrepancy accurately; the template status is computed from them afterwards.
+
 """
 
 
@@ -235,13 +241,31 @@ def extract_pdf(client, pdf_path, model, prompt):
 	return ThesisAssignmentSchema.model_validate_json(raw_text)
 
 
+# Missing-rule sets that alone count as a minor problem; extend with new sets.
+MINOR_MISSING_RULE_SETS = [
+	{"task_intro"},
+]
+
+
+def template_status(result):
+	"""0: everything ok, 1: minor problems, 2: critical problems."""
+	missing = set(result.missing_boilerplate_rules)
+	discrepancies = result.layout_discrepancies
+
+	if not missing and not discrepancies:
+		return 0
+	if not discrepancies and any(missing == rules for rules in MINOR_MISSING_RULE_SETS):
+		return 1
+	return 2
+
+
 def result_database_values(result):
 	visual_elements = {
 		element.element_type: element
 		for element in result.visual_elements
 	}
 	return {
-		"valid": int(result.template_valid),
+		"template_status": template_status(result),
 		"detected_template": result.detected_template,
 		"header_dept_head": result.header_dept_head,
 		"thesis_type": result.thesis_type,
@@ -282,7 +306,7 @@ def store_result(connection, filename, values):
 	placeholders = ", ".join("?" for _ in columns)
 	column_list = ", ".join(f'"{column}"' for column in columns)
 	connection.execute(
-		f'INSERT INTO "extract" ({column_list}) VALUES ({placeholders})',
+		f'INSERT OR REPLACE INTO "extract" ({column_list}) VALUES ({placeholders})',
 		(filename, *values.values()),
 	)
 	connection.commit()
@@ -295,7 +319,7 @@ def main(argv=None):
 
 	connection = sqlite3.connect(args.database)
 	ensure_extract_schema(connection)
-	files = pending_pdf_filenames(connection, args.data_dir, args.limit)
+	files = pending_pdf_filenames(connection, args.data_dir, list(templates), args.limit)
 	if not files:
 		print("No files need extraction.")
 		connection.close()
@@ -325,7 +349,7 @@ def main(argv=None):
 		else:
 			print(
 				f"Stored {filename}: template={result.detected_template}, "
-				f"valid={result.template_valid}, "
+				f"status={template_status(result)}, "
 				f"missing_boilerplate={len(result.missing_boilerplate_rules)}"
 			)
 

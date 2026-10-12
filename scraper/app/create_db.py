@@ -30,7 +30,7 @@ IMPORT_COLUMNS = (
 )
 REVIEW_COLUMNS = ("status", "ekovacsG", "eGuszti", "eGume", "ePali")
 EXTRACT_COLUMNS = {
-    "valid": "INTEGER",
+    "template_status": "INTEGER",
     "detected_template": "TEXT",
     "header_dept_head": "TEXT",
     "thesis_type": "TEXT",
@@ -222,7 +222,7 @@ def create_compatibility_views(connection):
             i.subject,
             i.title_hu,
             i.title_en,
-            e.valid
+            e.template_status
         FROM "import" AS i
         LEFT JOIN reviews AS r
           ON r.neptun_code = i.neptun_code AND r.version = i.version

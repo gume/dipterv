@@ -42,7 +42,7 @@ One row per `(neptun_code, version)`, with the same composite primary key as `im
 
 ### `extract`
 
-One row per extracted PDF, keyed by `filename`. `valid` stores the template validity result as an integer boolean.
+One row per extracted PDF, keyed by `filename`. `template_status` stores the template check result: NULL = not extracted, 0 = everything is ok, 1 = minor problems, 2 = critical problems.
 
 | Column | Purpose |
 | --- | --- |

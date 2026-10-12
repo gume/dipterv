@@ -2,3 +2,4 @@ data*
 !docs/database.md
 debug/
 __pycache__/
+tmp/

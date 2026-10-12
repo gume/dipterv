@@ -28,8 +28,13 @@ IMPORT_COLUMNS = (
     "title_hu",
     "title_en",
 )
-HUMAN_REVIEWERS = ("ekovacsG", "eGuszti", "eGume", "ePali")
-HUMAN_ASPECT = "remark"
+# Initial entries of the reviewers table: (id, display name).
+HUMAN_REVIEWERS = (
+    ("kovacsg", "KovacsG"),
+    ("guszti", "Guszti"),
+    ("gume", "Gume"),
+    ("pali", "Pali"),
+)
 EXTRACT_COLUMNS = {
     "template_status": "INTEGER",
     "detected_template": "TEXT",
@@ -191,7 +196,14 @@ def ensure_schema(connection):
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             PRIMARY KEY (neptun_code, version)
         );
+        CREATE TABLE IF NOT EXISTS "reviewers" (
+            id TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL
+        );
         """
+    )
+    connection.executemany(
+        'INSERT OR IGNORE INTO "reviewers" (id, name) VALUES (?, ?)', HUMAN_REVIEWERS
     )
     ensure_extract_schema(connection)
 
@@ -204,55 +216,6 @@ def ensure_extract_schema(connection):
     connection.execute(
         f'CREATE TABLE IF NOT EXISTS "extract" ('
         f'filename TEXT PRIMARY KEY NOT NULL, {column_definitions})'
-    )
-
-
-def create_compatibility_views(connection):
-    reviewer_columns = ",\n            ".join(
-        f"(SELECT r.result FROM reviews AS r WHERE r.neptun_code = i.neptun_code "
-        f"AND r.version = i.version AND r.reviewer = '{reviewer}' "
-        f"AND r.aspect = '{HUMAN_ASPECT}') AS {reviewer}"
-        for reviewer in HUMAN_REVIEWERS
-    )
-    connection.execute("DROP VIEW IF EXISTS filtered_dipterv")
-    connection.execute("DROP VIEW IF EXISTS dipterv")  # also drops its triggers
-    connection.executescript(
-        f"""
-        CREATE VIEW dipterv AS
-        SELECT
-            i.row_id AS id,
-            i.filename,
-            i.version AS verzio,
-            i.student_name AS hallgato,
-            i.supervisor_name AS konzulens,
-            i.degree AS szint,
-            (SELECT v.status FROM review_verdict AS v WHERE v.neptun_code = i.neptun_code
-               AND v.version = i.version) AS status,
-            {reviewer_columns},
-            i.neptun_code,
-            i.faculty,
-            i.subject,
-            i.title_hu,
-            i.title_en,
-            e.template_status
-        FROM "import" AS i
-        LEFT JOIN "extract" AS e ON e.filename = i.filename;
-
-        CREATE VIEW filtered_dipterv AS
-        SELECT *
-        FROM dipterv AS t1
-        WHERE t1.status != 'OK'
-          AND NOT (
-            t1.status = 'OLD'
-            AND EXISTS (
-              SELECT 1
-              FROM dipterv AS t2
-              WHERE t2.hallgato = t1.hallgato
-                AND t2.konzulens = t1.konzulens
-                AND t2.status = 'OK'
-            )
-          );
-        """
     )
 
 
@@ -311,7 +274,6 @@ def sync_import_records(records, database_path=DATABASE_PATH):
                             (record["neptun_code"], record["version"], current["neptun_code"], current["version"]),
                         )
 
-        create_compatibility_views(connection)
         connection.commit()
     except Exception:
         connection.rollback()

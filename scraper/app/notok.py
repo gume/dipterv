@@ -2,35 +2,35 @@ import sqlite3
 from collections import defaultdict
 
 conn = sqlite3.connect("/db/descriptions.sqlite")
-cursor = conn.cursor()
+conn.row_factory = sqlite3.Row
 
-# Fetch all rows with status 'Not OK', sorted by konzulens and hallgato
-cursor.execute("""
-    SELECT hallgato, konzulens, filename, status, eKovacsG, eGuszti, eGume, ePali
-    FROM dipterv
-    WHERE status = 'Not OK'
-    ORDER BY konzulens, hallgato;
-""")
-rows = cursor.fetchall()
+# Descriptions with a "nogo" verdict, grouped by supervisor, with the human remarks.
+rows = conn.execute("""
+    SELECT i.neptun_code, i.version, i.student_name, i.supervisor_name, i.filename
+    FROM "import" AS i
+    JOIN review_verdict AS v ON v.neptun_code = i.neptun_code AND v.version = i.version
+    WHERE v.status = 'nogo'
+    ORDER BY i.supervisor_name, i.student_name
+""").fetchall()
+
+grouped = defaultdict(list)
+for row in rows:
+    remarks = conn.execute("""
+        SELECT COALESCE(p.name, r.reviewer) AS reviewer, r.result
+        FROM reviews AS r
+        LEFT JOIN reviewers AS p ON p.id = r.reviewer
+        WHERE r.neptun_code = ? AND r.version = ? AND r.aspect = 'remark'
+        ORDER BY p.rowid, r.reviewer
+    """, (row["neptun_code"], row["version"])).fetchall()
+    grouped[row["supervisor_name"]].append((row, remarks))
 conn.close()
 
-# Group by konzulens
-grouped = defaultdict(list)
-for hallgato, konzulens, filename, status, review1, review2, review3, review4 in rows:
-    grouped[konzulens].append((hallgato, filename, status, review1, review2, review3, review4))
-
-# Print grouped output
-for konzulens in sorted(grouped):
-    print(f"\nKonzulens: {konzulens}")
-    for hallgato, filename, status, review1, review2, review3, review4 in grouped[konzulens]:
-        print(f"Hallgató: {hallgato}\n")
-        if review1:
-            print(f"Review1: {review1}\n")
-        if review2:
-            print(f"Review2: {review2}\n")
-        if review3:
-            print(f"Review3: {review3}\n")
-        if review4:
-            print(f"Review4: {review4}\n")
+for supervisor in sorted(grouped, key=lambda name: name or ""):
+    print(f"\nKonzulens: {supervisor}")
+    for row, remarks in grouped[supervisor]:
+        print(f"Hallgató: {row['student_name']} (v{row['version']})\n")
+        for remark in remarks:
+            if remark["result"]:
+                print(f"{remark['reviewer']}: {remark['result']}\n")
         print("\n")
     print("-----")

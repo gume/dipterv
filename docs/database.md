@@ -6,7 +6,7 @@ The application database is `descriptions.sqlite`, stored at `/db/descriptions.s
 
 The scraper and PHP web service share this mount. The scraper sets `/db` ownership to `www-data` after importing; the web service entrypoint also sets ownership of `/db` to `www-data` at startup.
 
-The database setup creates the current schema and does not migrate older databases. To move an existing database that has the old one-row-per-description `reviews` table, run `python3 /app/migrate_reviews.py` in the scraper container. It drops the old `reviews` table (refusing if it has rows unless `--force`), creates `reviews` and `review_verdict`, and recreates the views; other tables are untouched.
+The database setup creates the current schema and does not migrate older databases. To move an existing database that has the old one-row-per-description `reviews` table, run `python3 /app/migrate_reviews.py` in the scraper container. It drops the old `reviews` table (refusing if it has rows unless `--force`), creates `reviews`, `review_verdict` and `reviewers`, and drops the old `dipterv` and `filtered_dipterv` compatibility views; other tables are untouched.
 
 ## Schema
 
@@ -14,7 +14,7 @@ The database setup creates the current schema and does not migrate older databas
 
 ### `import`
 
-One row per student task-description version. The composite key `(neptun_code, version)` is unique; `filename` is also unique for compatibility with the existing web UI.
+One row per student task-description version. The composite key `(neptun_code, version)` is unique; `filename` is also unique because the web UI and extraction address a description by it.
 
 | Column | Purpose |
 | --- | --- |
@@ -36,7 +36,7 @@ One row per reviewer and aspect of an imported description: primary key `(neptun
 
 | Column | Purpose |
 | --- | --- |
-| `reviewer` | Reviewer id. AI reviewers use the model id (e.g. `gemini-3.5-flash-lite`); human reviewers use `ekovacsG`, `eGuszti`, `eGume`, `ePali`. |
+| `reviewer` | Reviewer id. AI reviewers use the model id (e.g. `gemini-3.5-flash-lite`); human reviewers use an id from `reviewers`. |
 | `aspect` | Reviewed aspect, e.g. `goal_clarity`. Human remarks use the aspect `remark`. |
 | `result` | Review text (reasoning or remark). |
 | `score` | Integer 1-5 (1 unacceptable, 3 average, 5 superior); NULL for human remarks. |
@@ -44,13 +44,17 @@ One row per reviewer and aspect of an imported description: primary key `(neptun
 
 ### `review_verdict`
 
-One overall go/no-go verdict per description, decided by humans: primary key `(neptun_code, version)`. AI reviews do not write here.
+One overall go/no-go verdict per description, decided by humans through the web UI: primary key `(neptun_code, version)`. AI reviews do not write here. A description without a row is undecided.
 
 | Column | Purpose |
 | --- | --- |
-| `status` | Verdict, e.g. `OK`, `Not OK`, or `OLD` (the values the web UI uses). |
+| `status` | `go`, `nogo`, or `undecided`. |
 | `summary` | Optional note. |
 | `updated_at` | UTC timestamp. |
+
+### `reviewers`
+
+The human reviewers offered by the web UI: `id` (primary key, used in `reviews.reviewer`) and `name` (display name). The web UI only lets the user pick an identity from this list; there is no authentication. `create_db.py` seeds `kovacsg`, `guszti`, `gume`, `pali` (`INSERT OR IGNORE`); add or rename rows with SQL.
 
 ### `extract`
 
@@ -79,10 +83,6 @@ docker compose run --rm -e GEMINI_API_KEY playwright-runner \
 
 Available options include `--limit`, `--model`, `--timeout`, `--templates-dir`, `--data-dir`, `--database`, and `--json`. With no `--limit`, all pending database PDFs are processed. Rows already present in `extract` are excluded before applying the limit; missing PDF files are warned about and do not consume it.
 
-## Compatibility view
-
-`dipterv` is a view joining `import` and `extract`. It exposes the legacy names used by existing code, including `verzio`, `hallgato`, `konzulens`, and `szint`, alongside the new metadata fields. `status` is the `review_verdict` status; `ekovacsG`, `eGuszti`, `eGume`, `ePali` are the `remark` aspect of the matching human reviewer in `reviews`. `INSTEAD OF UPDATE` triggers are not defined: `update.php` writes through the view are currently not supported and fail until the web UI is reworked. AI reviews are not shown in the view. `filtered_dipterv` retains its previous filtering behavior.
-
 The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQLite stores its filename and metadata.
 
 ## Readers and writers
@@ -92,11 +92,12 @@ The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQ
 | `scraper/app/prepare_docs.py` and `scraper/app/create_db.py` | Write | Read eligible task rows from Excel and reconcile the `import` table. `prepare_docs.py` syncs metadata before downloading PDFs and syncs any resulting filename changes afterward. |
 | `scraper/app/extract_docs.py` | Reads `import`; writes `extract` | Selects pending filenames from the database, sends PDFs and templates to the configured Google GenAI model, and stores structured extraction results. |
 | `scraper/app/review_docs.py` | Reads `import`, `extract`; writes `reviews` | AI review of the extracted description body; see [review_docs.md](review_docs.md). |
-| `webgui/html/data.php` | Reads | Selects all rows from `dipterv` and returns JSON to the web pages. It opens SQLite with create/read-write flags although it only runs a `SELECT`. |
-| `webgui/html/browse.html` | Reads via `data.php`; writes via `update.php` | Displays descriptions and submits review fields/status. |
-| `webgui/html/review.html` | Reads via `data.php`; writes via `update.php` | Loads descriptions for review and posts reviewer remarks/status changes. |
-| `webgui/html/update.php` | Writes | Updates a reviewer field or `status` through the `dipterv` view and trigger. |
-| `scraper/app/notok.py` | Reads | Selects `Not OK` rows from `dipterv` and prints them grouped by advisor. |
+| `webgui/html/data.php` | Reads | Returns one JSON object per `import` row with its `extract` format check (`template_status` and the cause list), `review_verdict`, human remarks (`reviews` aspect `remark`, keyed by reviewer) and AI scores (other aspects, keyed by model). Opens the database read-only. |
+| `webgui/html/reviewers.php` | Reads | Returns the `reviewers` list. |
+| `webgui/html/body.php` | Reads | Returns the extracted description body (same text as `review_docs.py` reviews) for the text view. |
+| `webgui/html/update.php` | Writes | `action=remark`: stores or (when empty) deletes a human remark in `reviews` for the chosen reviewer. `action=verdict`: sets `review_verdict.status`. Uses prepared statements and validates the reviewer and verdict values. |
+| `webgui/html/browse.html`, `review.html` | Via the PHP endpoints | Overview table and one-by-one review. Styles are in `style.css`, shared code in `common.js`; the PDF/text pane is in `index.html`. |
+| `scraper/app/notok.py` | Reads | Prints the descriptions with verdict `nogo`, grouped by supervisor, with the human remarks. |
 
 ## Import behavior
 

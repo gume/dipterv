@@ -1,0 +1,491 @@
+/* Shared styles for index.html (shell), browse.html and review.html. */
+
+html, body {
+    height: 100%;
+    margin: 0;
+    font-family: Arial, sans-serif;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+button, input, select, textarea {
+    font: inherit;
+}
+
+.muted {
+    color: #9ca3af;
+}
+
+/* ---- shell (index.html) ---- */
+
+#content {
+    display: flex;
+    height: 100%;
+}
+
+#left, #right {
+    width: 50%;
+    height: 100%;
+    min-width: 0;
+}
+
+#left {
+    border-right: 1px solid #d1d5db;
+}
+
+#mode-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+#right {
+    position: relative;
+    overflow: hidden;
+}
+
+#view-controls {
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.4rem;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+
+#view-controls button {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.3rem;
+    background: #fff;
+    color: #111827;
+    cursor: pointer;
+}
+
+#view-controls button:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+#view-controls button.active {
+    background: #1f2937;
+    border-color: #1f2937;
+    color: #fff;
+}
+
+#view-controls .separator {
+    width: 1px;
+    height: 1.4rem;
+    background: #d1d5db;
+}
+
+#zoom-level {
+    min-width: 3.5rem;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #111827;
+}
+
+#pdf-scroll,
+#text-view {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    padding: 3.5rem 0.5rem 0.5rem;
+}
+
+#text-view {
+    display: none;
+    margin: 0;
+    white-space: pre-wrap;
+    line-height: 1.5;
+    font-size: 0.95rem;
+}
+
+#the-canvas {
+    border: 1px solid black;
+    display: block;
+}
+
+@media (max-width: 960px) {
+    #content {
+        flex-direction: column;
+    }
+
+    #left {
+        width: 100%;
+        height: 58%;
+        border-right: 0;
+    }
+
+    #right {
+        width: 100%;
+        height: 42%;
+    }
+}
+
+/* ---- toolbar, buttons, filters ---- */
+
+#toolbar {
+    flex-shrink: 0;
+    background: #f3f4f6;
+    padding: 0.25rem 0.4rem;
+    border-bottom: 1px solid #d1d5db;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.btn {
+    background: #1d4ed8;
+    border: 1px solid #1e40af;
+    color: #fff;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.85em;
+    line-height: 1.4;
+    border-radius: 0.3rem;
+    cursor: pointer;
+}
+
+.btn.save {
+    background: #b91c1c;
+    border-color: #991b1b;
+}
+
+.toolbar-label {
+    margin-left: 0.4rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #374151;
+}
+
+.reviewer-select {
+    padding: 0.1rem 0.3rem;
+    border: 1px solid #9ca3af;
+    border-radius: 0.3rem;
+}
+
+.reviewer-select.unset {
+    border-color: #b91c1c;
+    background: #fee2e2;
+}
+
+.filter-toggle {
+    padding: 0.1rem 0.45rem;
+    border: 1px solid #9ca3af;
+    border-radius: 0.3rem;
+    cursor: pointer;
+    background: #f3f4f6;
+    color: #111827;
+    font-size: 0.85em;
+    line-height: 1.4;
+}
+
+.filter-toggle.active {
+    background: #1f2937;
+    color: #fff;
+    border-color: #1f2937;
+}
+
+/* ---- format badge, AI scores ---- */
+
+.badge {
+    display: inline-block;
+    padding: 0.05rem 0.45rem;
+    border-radius: 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: default;
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.badge.fmt-ok {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.badge.fmt-minor {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.badge.fmt-severe {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.ai-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.2rem;
+    margin-bottom: 0.15rem;
+}
+
+.ai-model {
+    font-size: 0.7rem;
+    color: #6b7280;
+    max-width: 6rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chip {
+    display: inline-block;
+    padding: 0 0.3rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: default;
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.chip.score-1 { background: #fecaca; color: #7f1d1d; }
+.chip.score-2 { background: #fed7aa; color: #7c2d12; }
+.chip.score-3 { background: #fef08a; color: #713f12; }
+.chip.score-4 { background: #d9f99d; color: #365314; }
+.chip.score-5 { background: #86efac; color: #14532d; }
+
+/* ---- verdict buttons ---- */
+
+.verdict {
+    display: inline-flex;
+    gap: 0.2rem;
+    white-space: nowrap;
+}
+
+.verdict-btn {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.35rem;
+    background: #fff;
+    color: #6b7280;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.verdict-btn.v-go { color: #15803d; }
+.verdict-btn.v-nogo { color: #b91c1c; }
+.verdict-btn.v-go.active { border-color: #15803d; background: #dcfce7; }
+.verdict-btn.v-nogo.active { border-color: #b91c1c; background: #fee2e2; }
+.verdict-btn.v-undecided.active { border-color: #6b7280; background: #e5e7eb; }
+
+/* ---- tooltip and toast (common.js) ---- */
+
+#tip {
+    position: fixed;
+    z-index: 10000;
+    display: none;
+    max-width: 24rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.35rem;
+    background: #111827;
+    color: #fff;
+    font-size: 0.8rem;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    pointer-events: none;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+#toast {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 9999;
+    display: none;
+    padding: 0.6rem 0.9rem;
+    border-radius: 0.5rem;
+    background: #166534;
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+#toast.error {
+    background: #b91c1c;
+}
+
+/* ---- browse.html ---- */
+
+#browse-wrap {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#table-wrapper {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+#docs {
+    width: 100% !important;
+}
+
+#docs th {
+    font-size: 0.82rem;
+    white-space: nowrap;
+    background: #f3f4f6;
+    color: #111827;
+    border-bottom: 1px solid #d1d5db;
+    padding: 0.35rem 0.4rem;
+}
+
+#docs td {
+    font-size: 0.82rem;
+    line-height: 1.2;
+    padding: 0.25rem 0.4rem;
+    vertical-align: middle;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.student-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.student-cell .student-version {
+    font-size: 0.72rem;
+    color: #555;
+}
+
+.open-pdf {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 0;
+    background: url(google_docs.png) center / 40px 40px no-repeat;
+    cursor: pointer;
+}
+
+textarea.remark {
+    display: block;
+    width: 9rem;
+    height: 3.2rem;
+    padding: 0.25rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.25rem;
+    resize: vertical;
+}
+
+textarea.remark[readonly] {
+    background: #f3f4f6;
+    color: #4b5563;
+}
+
+/* ---- review.html ---- */
+
+#review-wrap {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+#nav-bar {
+    flex-shrink: 0;
+    background: #fff;
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+#nav-bar button {
+    min-width: 2.2rem;
+    height: 2rem;
+    padding: 0 0.3rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.3rem;
+    background: #fff;
+    color: #111827;
+    cursor: pointer;
+}
+
+#nav-bar button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+#nav-counter {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #374151;
+    white-space: nowrap;
+}
+
+#nav-student {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    color: #374151;
+}
+
+#nav-student .nav-name {
+    font-weight: 600;
+}
+
+#nav-student .nav-supervisor {
+    color: #6b7280;
+    font-size: 0.78rem;
+}
+
+#nav-version {
+    font-size: 0.7rem;
+    color: #9ca3af;
+}
+
+#review-fields {
+    flex: 1;
+    overflow: auto;
+    padding: 1rem;
+}
+
+#review-fields .field {
+    margin-bottom: 0.75rem;
+}
+
+#review-fields label,
+.field-label {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #374151;
+}
+
+#review-fields textarea {
+    width: 100%;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.25rem;
+    resize: vertical;
+}
+
+.checks-row {
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+}

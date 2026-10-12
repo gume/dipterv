@@ -1,105 +1,10 @@
 <!DOCTYPE html>
+<html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.0.428/pdf.min.js"></script>
-<style type="text/css">
-html, body, #content {
-    height: 100%;
-    margin: 0;
-}
-
-#left {
-    float: left;
-    width: 50%;
-    height: 100%;
-    border-right: 1px solid #d1d5db;
-    box-sizing: border-box;
-}
-
-#mode-frame {
-    width: 100%;
-    height: 100%;
-    border: 0;
-}
-
-#right {
-    float: left;
-    width: 50%;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-    box-sizing: border-box;
-}
-
-#pdf-scroll {
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    padding: 0.5rem;
-    box-sizing: border-box;
-}
-
-#pdf-controls {
-    position: absolute;
-    top: 0.75rem;
-    left: 0.75rem;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.45rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.4rem;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
-    pointer-events: auto;
-}
-
-#pdf-controls button {
-    min-width: 2rem;
-    height: 2rem;
-    border: 1px solid #cbd5e1;
-    border-radius: 0.3rem;
-    background: #ffffff;
-    color: #111827;
-    cursor: pointer;
-    font-size: 0.95rem;
-    line-height: 1;
-}
-
-#pdf-controls button:disabled {
-    cursor: default;
-    opacity: 0.45;
-}
-
-#zoom-level {
-    min-width: 3.5rem;
-    text-align: center;
-    font: 600 0.85rem Arial, sans-serif;
-    color: #111827;
-}
-
-#the-canvas {
-    border: 1px solid black;
-    display: block;
-}
-
-@media (max-width: 960px) {
-    #left, #right {
-        float: none;
-        width: 100%;
-    }
-
-    #left {
-        height: 58%;
-    }
-
-    #right {
-        height: 42%;
-    }
-}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="content">
@@ -108,15 +13,21 @@ html, body, #content {
     </div>
 
     <div id="right">
-        <div id="pdf-controls" aria-label="PDF zoom controls">
-            <button type="button" id="zoom-out" onclick="changePdfZoom(-0.1)">-</button>
-            <button type="button" id="zoom-reset" onclick="resetPdfZoom()">100%</button>
-            <button type="button" id="zoom-in" onclick="changePdfZoom(0.1)">+</button>
-            <span id="zoom-level">120%</span>
+        <div id="view-controls">
+            <button type="button" id="view-pdf" onclick="setViewMode('pdf')">PDF</button>
+            <button type="button" id="view-text" onclick="setViewMode('text')">Text</button>
+            <span class="separator"></span>
+            <span id="zoom-controls" style="display:flex;align-items:center;gap:0.35rem;">
+                <button type="button" id="zoom-out" onclick="changePdfZoom(-0.1)">-</button>
+                <button type="button" id="zoom-reset" onclick="resetPdfZoom()">100%</button>
+                <button type="button" id="zoom-in" onclick="changePdfZoom(0.1)">+</button>
+                <span id="zoom-level">120%</span>
+            </span>
         </div>
         <div id="pdf-scroll">
             <canvas id="the-canvas"></canvas>
         </div>
+        <pre id="text-view"></pre>
     </div>
 </div>
 
@@ -132,30 +43,23 @@ function getCookie(name) {
     return match ? decodeURIComponent(match[1]) : null;
 }
 
-var currentMode = getCookie('dipterv_mode') || 'browse';
+var currentMode = getCookie('dipterv_mode') === 'review' ? 'review' : 'browse';
+var viewMode = getCookie('dipterv_view') === 'text' ? 'text' : 'pdf';
+var currentFilename = null;
 var currentPdf = null;
 var currentPageNumber = 1;
 var currentZoom = parseFloat(getCookie('dipterv_zoom')) || 1.2;
 var currentRenderTask = null;
+var loadToken = 0;
 
-// Set iframe to last-used mode
-(function() {
-    var frame = document.getElementById('mode-frame');
-    if (frame) frame.src = currentMode + '.html';
-})();
+document.getElementById('mode-frame').src = currentMode + '.html';
 
 function updateZoomUi() {
-    var zoomPercent = Math.round(currentZoom * 100);
-    var zoomLabel = document.getElementById('zoom-level');
-    var zoomOutButton = document.getElementById('zoom-out');
-    var zoomInButton = document.getElementById('zoom-in');
-    var zoomResetButton = document.getElementById('zoom-reset');
     var hasPdf = !!currentPdf;
-
-    zoomLabel.textContent = zoomPercent + '%';
-    zoomOutButton.disabled = !hasPdf || currentZoom <= 0.4;
-    zoomInButton.disabled = !hasPdf || currentZoom >= 3;
-    zoomResetButton.disabled = !hasPdf;
+    document.getElementById('zoom-level').textContent = Math.round(currentZoom * 100) + '%';
+    document.getElementById('zoom-out').disabled = !hasPdf || currentZoom <= 0.4;
+    document.getElementById('zoom-in').disabled = !hasPdf || currentZoom >= 3;
+    document.getElementById('zoom-reset').disabled = !hasPdf;
 }
 
 function renderCurrentPdfPage() {
@@ -173,22 +77,53 @@ function renderCurrentPdfPage() {
             currentRenderTask.cancel();
         }
 
-        currentRenderTask = page.render({
-            canvasContext: context,
-            viewport: viewport
-        });
-
+        currentRenderTask = page.render({ canvasContext: context, viewport: viewport });
         currentRenderTask.promise.then(function() {
             currentRenderTask = null;
         }).catch(function(error) {
             currentRenderTask = null;
-            if (error && error.name !== 'RenderingCancelledException') {
-                console.log(error);
-            }
+            if (error && error.name !== 'RenderingCancelledException') console.log(error);
         });
     });
 
     updateZoomUi();
+}
+
+function refreshView() {
+    var pdfMode = viewMode === 'pdf';
+    document.getElementById('pdf-scroll').style.display = pdfMode ? 'block' : 'none';
+    document.getElementById('text-view').style.display = pdfMode ? 'none' : 'block';
+    document.getElementById('zoom-controls').style.display = pdfMode ? 'flex' : 'none';
+    document.getElementById('view-pdf').classList.toggle('active', pdfMode);
+    document.getElementById('view-text').classList.toggle('active', !pdfMode);
+    if (!currentFilename) return;
+
+    var token = ++loadToken;
+    if (pdfMode) {
+        pdfjsDistBuildPdf.getDocument('descriptions/' + currentFilename).promise.then(function(pdf) {
+            if (token !== loadToken) return;
+            currentPdf = pdf;
+            currentPageNumber = 1;
+            renderCurrentPdfPage();
+        });
+    } else {
+        var view = document.getElementById('text-view');
+        view.textContent = 'Loading...';
+        fetch('body.php?filename=' + encodeURIComponent(currentFilename))
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (token === loadToken) view.textContent = data.text || data.error || '';
+            })
+            .catch(function() {
+                if (token === loadToken) view.textContent = 'Could not load the text.';
+            });
+    }
+}
+
+function setViewMode(mode) {
+    viewMode = mode === 'text' ? 'text' : 'pdf';
+    setCookie('dipterv_view', viewMode);
+    refreshView();
 }
 
 function switchMode(mode) {
@@ -197,18 +132,12 @@ function switchMode(mode) {
 
     currentMode = nextMode;
     setCookie('dipterv_mode', nextMode);
-    var frame = document.getElementById('mode-frame');
-    frame.src = nextMode + '.html';
+    document.getElementById('mode-frame').src = nextMode + '.html';
 }
 
 function displayFK(filename) {
-    var loadingTask = pdfjsDistBuildPdf.getDocument('descriptions/' + filename);
-    loadingTask.promise.then(function(pdf) {
-        currentPdf = pdf;
-        currentPageNumber = 1;
-        renderCurrentPdfPage();
-    });
-
+    currentFilename = filename;
+    refreshView();
     return false;
 }
 
@@ -228,10 +157,7 @@ function resetPdfZoom() {
     renderCurrentPdfPage();
 }
 
-window.switchMode = switchMode;
-window.displayFK = displayFK;
-window.changePdfZoom = changePdfZoom;
-window.resetPdfZoom = resetPdfZoom;
+refreshView();
 updateZoomUi();
 </script>
 </body>

@@ -28,7 +28,8 @@ IMPORT_COLUMNS = (
     "title_hu",
     "title_en",
 )
-REVIEW_COLUMNS = ("status", "ekovacsG", "eGuszti", "eGume", "ePali")
+HUMAN_REVIEWERS = ("ekovacsG", "eGuszti", "eGume", "ePali")
+HUMAN_ASPECT = "remark"
 EXTRACT_COLUMNS = {
     "template_status": "INTEGER",
     "detected_template": "TEXT",
@@ -175,11 +176,19 @@ def ensure_schema(connection):
         CREATE TABLE IF NOT EXISTS "reviews" (
             neptun_code TEXT NOT NULL,
             version INTEGER NOT NULL,
+            reviewer TEXT NOT NULL,
+            aspect TEXT NOT NULL,
+            result TEXT,
+            score INTEGER,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (neptun_code, version, reviewer, aspect)
+        );
+        CREATE TABLE IF NOT EXISTS "review_verdict" (
+            neptun_code TEXT NOT NULL,
+            version INTEGER NOT NULL,
             status TEXT,
-            ekovacsG TEXT,
-            eGuszti TEXT,
-            eGume TEXT,
-            ePali TEXT,
+            summary TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             PRIMARY KEY (neptun_code, version)
         );
         """
@@ -199,11 +208,16 @@ def ensure_extract_schema(connection):
 
 
 def create_compatibility_views(connection):
+    reviewer_columns = ",\n            ".join(
+        f"(SELECT r.result FROM reviews AS r WHERE r.neptun_code = i.neptun_code "
+        f"AND r.version = i.version AND r.reviewer = '{reviewer}' "
+        f"AND r.aspect = '{HUMAN_ASPECT}') AS {reviewer}"
+        for reviewer in HUMAN_REVIEWERS
+    )
     connection.execute("DROP VIEW IF EXISTS filtered_dipterv")
-    connection.execute("DROP TRIGGER IF EXISTS dipterv_update")
-    connection.execute("DROP VIEW IF EXISTS dipterv")
+    connection.execute("DROP VIEW IF EXISTS dipterv")  # also drops its triggers
     connection.executescript(
-        """
+        f"""
         CREATE VIEW dipterv AS
         SELECT
             i.row_id AS id,
@@ -212,11 +226,9 @@ def create_compatibility_views(connection):
             i.student_name AS hallgato,
             i.supervisor_name AS konzulens,
             i.degree AS szint,
-            r.status,
-            r.ekovacsG,
-            r.eGuszti,
-            r.eGume,
-            r.ePali,
+            (SELECT v.status FROM review_verdict AS v WHERE v.neptun_code = i.neptun_code
+               AND v.version = i.version) AS status,
+            {reviewer_columns},
             i.neptun_code,
             i.faculty,
             i.subject,
@@ -224,8 +236,6 @@ def create_compatibility_views(connection):
             i.title_en,
             e.template_status
         FROM "import" AS i
-        LEFT JOIN reviews AS r
-          ON r.neptun_code = i.neptun_code AND r.version = i.version
         LEFT JOIN "extract" AS e ON e.filename = i.filename;
 
         CREATE VIEW filtered_dipterv AS
@@ -242,18 +252,6 @@ def create_compatibility_views(connection):
                 AND t2.status = 'OK'
             )
           );
-
-        CREATE TRIGGER dipterv_update
-        INSTEAD OF UPDATE ON dipterv
-        BEGIN
-            UPDATE reviews
-            SET status = NEW.status,
-                ekovacsG = NEW.ekovacsG,
-                eGuszti = NEW.eGuszti,
-                eGume = NEW.eGume,
-                ePali = NEW.ePali
-            WHERE neptun_code = OLD.neptun_code AND version = OLD.verzio;
-        END;
         """
     )
 
@@ -307,15 +305,11 @@ def sync_import_records(records, database_path=DATABASE_PATH):
                     values + (current["neptun_code"], current["version"]),
                 )
                 if (current["neptun_code"], current["version"]) != (record["neptun_code"], record["version"]):
-                    connection.execute(
-                        "UPDATE reviews SET neptun_code = ?, version = ? WHERE neptun_code = ? AND version = ?",
-                        (record["neptun_code"], record["version"], current["neptun_code"], current["version"]),
-                    )
-
-            connection.execute(
-                "INSERT OR IGNORE INTO reviews (neptun_code, version) VALUES (?, ?)",
-                (record["neptun_code"], record["version"]),
-            )
+                    for table in ("reviews", "review_verdict"):
+                        connection.execute(
+                            f"UPDATE {table} SET neptun_code = ?, version = ? WHERE neptun_code = ? AND version = ?",
+                            (record["neptun_code"], record["version"], current["neptun_code"], current["version"]),
+                        )
 
         create_compatibility_views(connection)
         connection.commit()

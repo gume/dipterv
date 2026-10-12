@@ -6,7 +6,7 @@ The application database is `descriptions.sqlite`, stored at `/db/descriptions.s
 
 The scraper and PHP web service share this mount. The scraper sets `/db` ownership to `www-data` after importing; the web service entrypoint also sets ownership of `/db` to `www-data` at startup.
 
-The database setup creates the current schema and does not migrate older databases. Delete `data/db/descriptions.sqlite` manually before initializing this schema if an older database is present.
+The database setup creates the current schema and does not migrate older databases. To move an existing database that has the old one-row-per-description `reviews` table, run `python3 /app/migrate_reviews.py` in the scraper container. It drops the old `reviews` table (refusing if it has rows unless `--force`), creates `reviews` and `review_verdict`, and recreates the views; other tables are untouched.
 
 ## Schema
 
@@ -32,13 +32,25 @@ One row per student task-description version. The composite key `(neptun_code, v
 
 ### `reviews`
 
-One row per `(neptun_code, version)`, with the same composite primary key as `import`.
+One row per reviewer and aspect of an imported description: primary key `(neptun_code, version, reviewer, aspect)`. `(neptun_code, version)` identifies the `import` row.
 
 | Column | Purpose |
 | --- | --- |
-| `neptun_code`, `version` | Identify the imported task-description version. |
-| `status` | Overall review status, such as `OK` or `Not OK`. |
-| `ekovacsG`, `eGuszti`, `eGume`, `ePali` | Reviewer remarks stored as text. |
+| `reviewer` | Reviewer id. AI reviewers use the model id (e.g. `gemini-3.5-flash-lite`); human reviewers use `ekovacsG`, `eGuszti`, `eGume`, `ePali`. |
+| `aspect` | Reviewed aspect, e.g. `goal_clarity`. Human remarks use the aspect `remark`. |
+| `result` | Review text (reasoning or remark). |
+| `score` | Integer 1-5 (1 unacceptable, 3 average, 5 superior); NULL for human remarks. |
+| `updated_at` | UTC timestamp. |
+
+### `review_verdict`
+
+One overall go/no-go verdict per description, decided by humans: primary key `(neptun_code, version)`. AI reviews do not write here.
+
+| Column | Purpose |
+| --- | --- |
+| `status` | Verdict, e.g. `OK`, `Not OK`, or `OLD` (the values the web UI uses). |
+| `summary` | Optional note. |
+| `updated_at` | UTC timestamp. |
 
 ### `extract`
 
@@ -69,7 +81,7 @@ Available options include `--limit`, `--model`, `--timeout`, `--templates-dir`, 
 
 ## Compatibility view
 
-`dipterv` is a view joining `import`, `reviews`, and `extract`. It exposes the legacy names used by existing code, including `verzio`, `hallgato`, `konzulens`, and `szint`, alongside the new metadata fields. An `INSTEAD OF UPDATE` trigger routes changes to `status` and reviewer columns into `reviews`, so the existing PHP update endpoint continues to work. `filtered_dipterv` retains its previous filtering behavior.
+`dipterv` is a view joining `import` and `extract`. It exposes the legacy names used by existing code, including `verzio`, `hallgato`, `konzulens`, and `szint`, alongside the new metadata fields. `status` is the `review_verdict` status; `ekovacsG`, `eGuszti`, `eGume`, `ePali` are the `remark` aspect of the matching human reviewer in `reviews`. `INSTEAD OF UPDATE` triggers are not defined: `update.php` writes through the view are currently not supported and fail until the web UI is reworked. AI reviews are not shown in the view. `filtered_dipterv` retains its previous filtering behavior.
 
 The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQLite stores its filename and metadata.
 
@@ -79,6 +91,7 @@ The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQ
 | --- | --- | --- |
 | `scraper/app/prepare_docs.py` and `scraper/app/create_db.py` | Write | Read eligible task rows from Excel and reconcile the `import` table. `prepare_docs.py` syncs metadata before downloading PDFs and syncs any resulting filename changes afterward. |
 | `scraper/app/extract_docs.py` | Reads `import`; writes `extract` | Selects pending filenames from the database, sends PDFs and templates to the configured Google GenAI model, and stores structured extraction results. |
+| `scraper/app/review_docs.py` | Reads `import`, `extract`; writes `reviews` | AI review of the extracted description body; see [review_docs.md](review_docs.md). |
 | `webgui/html/data.php` | Reads | Selects all rows from `dipterv` and returns JSON to the web pages. It opens SQLite with create/read-write flags although it only runs a `SELECT`. |
 | `webgui/html/browse.html` | Reads via `data.php`; writes via `update.php` | Displays descriptions and submits review fields/status. |
 | `webgui/html/review.html` | Reads via `data.php`; writes via `update.php` | Loads descriptions for review and posts reviewer remarks/status changes. |
@@ -87,4 +100,6 @@ The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQ
 
 ## Import behavior
 
-The importer processes workbook rows in the portal's pending-approval statuses. If the expected PDF is already present in `/data`, `prepare_docs.py` skips its download and still checks/syncs its database record. Missing records and fields are reported as additions. Differences from existing non-empty values are reported as warnings, then the workbook value replaces the stored import value. Review data stays in `reviews` and is not replaced during normal import syncs.
+The importer processes workbook rows in the portal's pending-approval statuses. If the expected PDF is already present in `/data`, `prepare_docs.py` skips its download and still checks/syncs its database record. Missing records and fields are reported as additions. Differences from existing non-empty values are reported as warnings, then the workbook value replaces the stored import value. Review data stays in `reviews` and `review_verdict` and is not replaced during normal import syncs; if a record's key changes, its review rows are moved to the new key.
+
+See also [extract_docs.md](extract_docs.md) and [review_docs.md](review_docs.md).

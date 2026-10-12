@@ -1,0 +1,29 @@
+# Configuration of review_docs.py. The API key is read from the GEMINI_API_KEY environment variable.
+
+[database]
+path = "/db/descriptions.sqlite"
+
+[llm]
+model       = "gemini-3.5-flash-lite"   # also the reviewer id stored in the database; override with --model
+temperature = 0.0
+timeout     = 120                        # seconds per request
+retries     = 2                          # additional attempts after a failed request
+
+[review]
+reasoning_language = "the language of the document"
+system_prompt = """You are a strict but fair university thesis-supervision reviewer. \
+Grade on a 1-5 scale: 1 unacceptable, 2 weak, 3 average/generally required, 4 good, 5 superior. \
+Judge only what is written. Reply with one JSON object only."""
+
+[[review.aspects]]
+key = "goal_clarity"
+prompt = "Is the goal of the thesis clearly and specifically defined?"
+[[review.aspects]]
+key = "task_specificity"
+prompt = "Are the listed tasks concrete, measurable and appropriate for the given degree level (BSc/MSc/BProf)?"
+[[review.aspects]]
+key = "scope_feasibility"
+prompt = "Is the scope realistic for the time available and the degree level?"
+[[review.aspects]]
+key = "language_quality"
+prompt = "Is the text well written: correct grammar, professional terminology, consistent style?"

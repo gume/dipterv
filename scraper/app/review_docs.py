@@ -60,8 +60,8 @@ def load_config(path):
 		return tomllib.load(config_file)
 
 
-def pending_documents(connection, reviewer, limit=None, filename=None):
-	# Only extracted descriptions; skip those already reviewed by this reviewer.
+def pending_documents(connection, reviewer, aspects, limit=None, filename=None):
+	# Only extracted descriptions; rerun when this reviewer's configured aspects are incomplete.
 	query = """
 		SELECT i.neptun_code, i.version, i.filename, i.degree, i.faculty,
 		       e.thesis_title, e.problem_background, e.project_goal, e.task_intro, e.tasks_json
@@ -74,13 +74,15 @@ def pending_documents(connection, reviewer, limit=None, filename=None):
 		query += " AND i.filename = ?"
 		params.append(filename)
 	else:
-		query += """
-			AND NOT EXISTS (
-				SELECT 1 FROM reviews AS r
-				WHERE r.neptun_code = i.neptun_code AND r.version = i.version AND r.reviewer = ?
-			)
+		aspect_placeholders = ", ".join("?" for _ in aspects)
+		query += f"""
+			AND (
+				SELECT COUNT(DISTINCT r.aspect) FROM reviews AS r
+				WHERE r.neptun_code = i.neptun_code AND r.version = i.version
+				  AND r.reviewer = ? AND r.aspect IN ({aspect_placeholders})
+			) < ?
 		"""
-		params.append(reviewer)
+		params.extend((reviewer, *aspects, len(aspects)))
 	query += " ORDER BY i.row_id, i.filename"
 	if limit is not None:
 		query += " LIMIT ?"
@@ -110,7 +112,9 @@ def build_prompt(config, row, body):
 		f"Thesis description of a {row['degree']} student ({row['faculty']}).\n"
 		f"Write the reasoning in: {reasoning_language}.\n\n"
 		f"Questions:\n{aspects}\n\n"
-		"Return one result per key with an integer score from 1 to 5 and a short reasoning.\n\n"
+		"Return exactly one result per key with an integer score from 1 to 5 and concise, specific reasoning. "
+		"Support each score with evidence from the supplied text; quote exact errors or ambiguous phrases where relevant. "
+		"Do not invent problems or overlook definite defects.\n\n"
 		f"Document text:\n<<<\n{body}\n>>>"
 	)
 
@@ -181,7 +185,8 @@ def main(argv=None):
 	connection = sqlite3.connect(config["database"]["path"])
 	connection.row_factory = sqlite3.Row
 	ensure_schema(connection)
-	rows = pending_documents(connection, model, args.limit, args.filename)
+	aspects = [aspect["key"] for aspect in config["review"]["aspects"]]
+	rows = pending_documents(connection, model, aspects, args.limit, args.filename)
 	if not rows:
 		print("No descriptions need review.")
 		connection.close()

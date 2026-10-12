@@ -8,7 +8,7 @@ The body sent to the model is built from `extract` in this order: `thesis_title`
 
 ## Selection
 
-Candidates are `import` rows joined to `extract` rows with a non-NULL `thesis_title`. A description is pending when `reviews` has no row for `(neptun_code, version, reviewer)`, where the reviewer id is the model id. Results are therefore kept per model, and re-runs skip finished documents.
+Candidates are `import` rows joined to `extract` rows with a non-NULL `thesis_title`. A description is pending when the model reviewer is missing any configured aspect in `reviews`. This also requeues existing reviews when new aspects are added. Results are kept per model; complete reviews are skipped. `--filename` explicitly reruns that file and replaces the model's prior aspect results.
 
 ## Results
 
@@ -39,8 +39,8 @@ Exit code: 0 on success, 1 if any review failed (or `--filename` matched nothing
 | `database.path` | SQLite file. |
 | `llm.model`, `llm.temperature`, `llm.timeout`, `llm.retries` | Model settings; failed requests are retried with backoff (60 s on rate limiting). |
 | `review.reasoning_language` | Language requested for the reasoning. |
-| `review.system_prompt` | System instruction. |
-| `[[review.aspects]]` | `key` and `prompt` of each reviewed aspect. |
+| `review.system_prompt` | Strict shared 1-5 scoring anchors, evidence requirements and reviewer instructions. |
+| `[[review.aspects]]` | `key` and `prompt` of each reviewed aspect. The current rubric covers goal clarity, task specificity, scope feasibility, strict language accuracy, degree appropriateness, AI promptability, and task ambiguity. |
 
 ## Functions
 

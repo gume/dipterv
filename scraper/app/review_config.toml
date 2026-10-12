@@ -11,19 +11,26 @@ retries     = 2                          # additional attempts after a failed re
 
 [review]
 reasoning_language = "the language of the document"
-system_prompt = """You are a strict but fair university thesis-supervision reviewer. \
-Grade on a 1-5 scale: 1 unacceptable, 2 weak, 3 average/generally required, 4 good, 5 superior. \
-Judge only what is written. Reply with one JSON object only."""
+system_prompt = """You are a rigorous university thesis-description reviewer. Assess only the supplied text and degree level; do not infer missing quality or reward plausible intentions. Apply every aspect independently and conservatively. Scores are integers: 1 = unacceptable or fundamental failure; 2 = substantial weakness; 3 = meets the minimum expected standard; 4 = clearly good with only minor shortcomings; 5 = exceptional and fully convincing. A 5 requires strong positive evidence and no material defect. For language, even a small definite grammar, spelling, punctuation, or usage error must lower the score; repeated or obvious errors lower it substantially. For ambiguity, identify wording that permits materially different interpretations and penalize it heavily. Cite concrete phrases or errors in each reasoning; do not invent examples. Calibrate expectations to BSc, MSc, or BProf as specified. Reply with one JSON object only, with exactly one result for each requested key."""
 
 [[review.aspects]]
 key = "goal_clarity"
-prompt = "Is the goal of the thesis clearly and specifically defined?"
+prompt = "Is the intended outcome explicit, bounded, and verifiable? Treat vague verbs, undefined terms, missing success criteria, or goals that permit materially different interpretations as serious defects. Score 5 only when the goal is precise and unambiguous; explain the exact ambiguity or missing criterion when present."
 [[review.aspects]]
 key = "task_specificity"
-prompt = "Are the listed tasks concrete, measurable and appropriate for the given degree level (BSc/MSc/BProf)?"
+prompt = "Are the tasks concrete, ordered where needed, and individually verifiable? Penalize vague verbs, undefined deliverables, implicit prerequisites, and tasks that can be interpreted in materially different ways. Score ambiguity and non-verifiability as substantial defects rather than minor style issues. Calibrate task scope to BSc, MSc, or BProf."
 [[review.aspects]]
 key = "scope_feasibility"
-prompt = "Is the scope realistic for the time available and the degree level?"
+prompt = "Is the workload coherent and feasible for the stated degree level? Look for excessive breadth, incompatible goals, missing dependencies, and a task list too small to support the stated outcome. For BSc/BProf expect a realistic development, implementation, or integration project; for MSc expect a bounded but substantial investigation. State the evidence for any concern."
 [[review.aspects]]
 key = "language_quality"
-prompt = "Is the text well written: correct grammar, professional terminology, consistent style?"
+prompt = "Review the entire supplied description carefully in its original language for grammar, spelling, punctuation, word choice, agreement, sentence construction, and professional terminology. This is a strict proofreading criterion: any definite error, even a small isolated one, must reduce the score below 5; repeated errors, awkward or unclear sentences, or terminology misuse must reduce it substantially. Do not mistake acceptable stylistic variation for an error. Quote each observed issue briefly and explain the correction; never invent errors. Score 5 only if the full text is error-free and natural."
+[[review.aspects]]
+key = "degree_appropriateness"
+prompt = "Does the intellectual contribution match the stated degree? For BSc/BProf, a well-scoped development, implementation, or integration task can meet expectations; do not demand original research. For MSc, expect a beginner-researcher level contribution: a focused question, critical comparison or investigation, defensible method, and an evidence-based result, not just routine implementation. Penalize a mismatch strongly and cite the described tasks that show it."
+[[review.aspects]]
+key = "ai_promptability"
+prompt = "Could the central deliverable be completed adequately by giving a general-purpose AI assistant one ordinary prompt, without substantial independent engineering, domain-specific integration, data collection, experimentation, validation, or defensible analysis? Score 1 if yes or if the description offers no meaningful work beyond prompt-based generation; 3 if there is some substantive work but the AI-replaceable part is large; 5 only if the central work clearly requires substantial independent, verifiable effort. For MSc, also require genuine investigation/critical analysis rather than merely asking AI to summarize or implement. Do not penalize appropriate use of AI as a tool. Explain what work is or is not AI-replaceable from the text."
+[[review.aspects]]
+key = "task_ambiguity"
+prompt = "Are the topic, scope, methods, deliverables, and task wording precise enough that a student and supervisor would agree on what must be done and how completion is judged? Treat material ambiguity as a major defect: if a task supports multiple materially different interpretations or key terms/methods are undefined, score 1 or 2 unless the rest of the text resolves it. Score 5 only when important terms, boundaries, deliverables, and completion expectations are clear. Quote the ambiguous wording and name the plausible interpretations."

@@ -97,6 +97,12 @@ button, input, select, textarea {
     color: #111827;
 }
 
+#zoom-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
 #pdf-scroll,
 #text-view {
     width: 100%;
@@ -454,6 +460,14 @@ textarea.remark[readonly] {
 #nav-version {
     font-size: 0.7rem;
     color: #9ca3af;
+}
+
+.ai-only {
+    display: none;
+}
+
+.ai-only.enabled {
+    display: block;
 }
 
 #review-fields {

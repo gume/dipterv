@@ -16,7 +16,7 @@ For each aspect configured in `review.aspects`, the model returns a 1-5 score an
 
 ## Usage
 
-`GEMINI_API_KEY` must be set in the environment.
+`GEMINI_API_KEY` must be set in the environment (Google, the default).
 
 ```bash
 docker compose run --rm -e GEMINI_API_KEY playwright-runner \
@@ -27,10 +27,22 @@ docker compose run --rm -e GEMINI_API_KEY playwright-runner \
 | --- | --- |
 | `--limit N` | Review at most N pending descriptions. |
 | `--model ID` | Model to use; also the reviewer id. Defaults to `llm.model` from the config. |
+| `--openai` | Use an OpenAI-compatible chat-completions API instead of Google; see below. |
 | `--filename NAME` | Review only this `import` filename; an existing review by the same reviewer is replaced. |
 | `--config PATH` | Alternative TOML config (default `scraper/app/review_config.toml`). |
 
 Exit code: 0 on success, 1 if any review failed (or `--filename` matched nothing), 2 if the API key is missing.
+
+### OpenAI-compatible API
+
+With `--openai` the same prompts, scoring, summary, retry and storage code is used; only the request transport differs. Settings come from environment variables only; if any is unset, the run stops (exit code 2) and lists the missing names:
+
+| Variable | Meaning |
+| --- | --- |
+| `OPENAI_API_KEY` | API key. |
+| `OPENAI_BASE_URL` | Endpoint, e.g. `https://api.openai.com/v1` or a local server. |
+
+The model comes from `--model`, or `llm.model` in the config if omitted, so pass `--model` with `--openai`. The model id is the reviewer id, as with Google. The server must support chat completions with `response_format={"type": "json_object"}`; the expected JSON schema is passed in the system prompt and the answer is validated afterwards, so a malformed reply is retried like any other failure. HTTP 429 and a `Retry-After` header are honoured.
 
 ## Configuration (`review_config.toml`)
 
@@ -49,6 +61,7 @@ Exit code: 0 on success, 1 if any review failed (or `--filename` matched nothing
 | `pending_documents` | Selects documents to review (pending, or one `--filename`). |
 | `document_body` | Builds the reviewed text. |
 | `build_prompt` | Builds the user prompt from the aspects, degree/faculty and body. |
-| `request_review` | Calls Google GenAI with a JSON schema and retries. |
+| `request_structured` | One structured-output call with retries; the only function that knows the transport (Google client or `OpenAIClient`). |
+| `request_review` | Aspect scoring call. |
 | `validated_scores` | Ensures every configured aspect has a 1-5 score. |
 | `store_review` | Replaces the reviewer's rows for the document. |

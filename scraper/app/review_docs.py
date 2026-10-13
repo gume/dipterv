@@ -19,6 +19,54 @@ from create_db import ensure_schema
 
 APP_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG = APP_DIR / "review_config.toml"
+OPENAI_ENV_KEY = "OPENAI_API_KEY"
+OPENAI_ENV_URL = "OPENAI_BASE_URL"
+
+
+class OpenAIClient:
+	"""Chat-completions transport for OpenAI-compatible servers; the rest of the pipeline is shared."""
+
+	def __init__(self, api_key, base_url, timeout):
+		from openai import OpenAI
+
+		self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
+		self._no_temperature = set()
+
+	@staticmethod
+	def _rejects_temperature(error):
+		# Reasoning models answer 400 unsupported_value for any non-default temperature.
+		param = getattr(error, "param", None) or (getattr(error, "body", None) or {}).get("param")
+		return getattr(error, "status_code", None) == 400 and (
+			param == "temperature" or "'temperature'" in str(error)
+		)
+
+	def generate_text(self, model, prompt, response_schema, system_instruction, temperature):
+		# json_object mode is the widest-supported option, so the schema is given in the prompt.
+		schema = json.dumps(response_schema.model_json_schema(), ensure_ascii=False)
+		request = {
+			"model": model,
+			"response_format": {"type": "json_object"},
+			"messages": [
+				{
+					"role": "system",
+					"content": f"{system_instruction}\n\nReturn only one JSON object conforming to this JSON schema:\n{schema}",
+				},
+				{"role": "user", "content": prompt},
+			],
+		}
+		if model not in self._no_temperature:
+			request["temperature"] = temperature
+		try:
+			response = self._client.chat.completions.create(**request)
+		except Exception as error:
+			if "temperature" not in request or not self._rejects_temperature(error):
+				raise
+			print(f"NOTE: {model} does not accept temperature={temperature}; using its default.", file=sys.stderr)
+			self._no_temperature.add(model)
+			del request["temperature"]
+			response = self._client.chat.completions.create(**request)
+		text = (response.choices[0].message.content or "").strip()
+		return re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
 
 
 class AspectResult(BaseModel):
@@ -52,6 +100,11 @@ def parse_args(argv=None):
 	parser.add_argument("--config", default=str(DEFAULT_CONFIG), help="TOML configuration file.")
 	parser.add_argument("--limit", type=positive_int, default=None, help="Maximum number of descriptions to review.")
 	parser.add_argument("--model", default=None, help="Model ID; also used as the reviewer id.")
+	parser.add_argument(
+		"--openai",
+		action="store_true",
+		help=f"Use an OpenAI-compatible API instead of Google; needs {OPENAI_ENV_KEY} and {OPENAI_ENV_URL}; the model is taken from --model or the config.",
+	)
 	parser.add_argument(
 		"--filename",
 		default=None,
@@ -138,24 +191,31 @@ def is_rate_limited(error):
 	return (
 		"RESOURCE_EXHAUSTED" in message
 		or "QUOTA EXCEEDED" in message
-		or getattr(error, "code", None) == 429
+		or 429 in (getattr(error, "code", None), getattr(error, "status_code", None))
 	)
 
 
 def retry_delay_seconds(error):
 	message = str(error)
 	match = re.search(r"\bretry\s+in\s+(\d+(?:\.\d+)?)\s*(?:s|sec(?:onds?)?)\b", message, re.IGNORECASE)
-	return float(match.group(1)) if match else None
+	if match:
+		return float(match.group(1))
+	headers = getattr(getattr(error, "response", None), "headers", None)
+	try:
+		return float(headers["retry-after"]) if headers and "retry-after" in headers else None
+	except (TypeError, ValueError):
+		return None
 
 
 def request_structured(client, config, model, prompt, response_schema, system_instruction):
 	llm = config["llm"]
+	temperature = llm.get("temperature", 0.0)
 	request = {
 		"model": model,
 		"contents": prompt,
 		"config": types.GenerateContentConfig(
 			system_instruction=system_instruction,
-			temperature=llm.get("temperature", 0.0),
+			temperature=temperature,
 			response_mime_type="application/json",
 			response_schema=response_schema,
 		),
@@ -163,8 +223,11 @@ def request_structured(client, config, model, prompt, response_schema, system_in
 	attempts = llm.get("retries", 2) + 1
 	for attempt in range(1, attempts + 1):
 		try:
-			response = client.models.generate_content(**request)
-			return response_schema.model_validate_json((response.text or "").strip())
+			if isinstance(client, OpenAIClient):
+				text = client.generate_text(model, prompt, response_schema, system_instruction, temperature)
+			else:
+				text = client.models.generate_content(**request).text
+			return response_schema.model_validate_json((text or "").strip())
 		except Exception as error:
 			if attempt == attempts:
 				raise
@@ -248,14 +311,40 @@ def store_review(connection, row, reviewer, scores, average_score, summary):
 		)
 
 
+def openai_settings():
+	"""Returns (settings, missing env names)."""
+	missing = [name for name in (OPENAI_ENV_KEY, OPENAI_ENV_URL) if not os.environ.get(name)]
+	settings = {
+		"api_key": os.environ.get(OPENAI_ENV_KEY),
+		"base_url": os.environ.get(OPENAI_ENV_URL),
+	}
+	return settings, missing
+
+
 def main(argv=None):
 	args = parse_args(argv)
 	config = load_config(args.config)
+	timeout = config["llm"].get("timeout", 120)
 	model = args.model or config["llm"]["model"]
 
-	if not os.environ.get("GEMINI_API_KEY"):
-		print("ERROR: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
-		return 2
+	if args.openai:
+		settings, missing = openai_settings()
+		if missing:
+			print(
+				"ERROR: --openai needs these environment variables, which are not set: " + ", ".join(missing),
+				file=sys.stderr,
+			)
+			return 2
+		try:
+			client = OpenAIClient(settings["api_key"], settings["base_url"], timeout)
+		except ImportError:
+			print("ERROR: the 'openai' Python package is not installed (pip install openai).", file=sys.stderr)
+			return 2
+	else:
+		if not os.environ.get("GEMINI_API_KEY"):
+			print("ERROR: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
+			return 2
+		client = genai.Client(http_options=types.HttpOptions(timeout=timeout * 1000))
 
 	connection = sqlite3.connect(config["database"]["path"])
 	connection.row_factory = sqlite3.Row
@@ -267,9 +356,6 @@ def main(argv=None):
 		connection.close()
 		return 1 if args.filename else 0
 
-	client = genai.Client(
-		http_options=types.HttpOptions(timeout=config["llm"].get("timeout", 120) * 1000)
-	)
 	stored = failures = 0
 	for number, row in enumerate(rows, 1):
 		print(f"[{number}/{len(rows)}] Reviewing {row['filename']} with {model}")

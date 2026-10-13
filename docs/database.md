@@ -108,6 +108,7 @@ The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQ
 | `webgui/html/update.php` | Writes | `action=remark`: stores or (when empty) deletes a human remark in `reviews` for the chosen reviewer. `action=verdict`: sets `review_verdict.status`. Uses prepared statements and validates the reviewer and verdict values. |
 | `webgui/html/browse.html`, `review.html` | Via the PHP endpoints | Overview table and one-by-one review. Styles are in `style.css`, shared code in `common.js`; the PDF/text pane is in `index.html`. |
 | `scraper/app/notok.py` | Reads | Prints the descriptions with verdict `nogo`, grouped by supervisor, with the human remarks. |
+| `scraper/app/manage_reviews.py` | Reads/deletes `reviews`, `review_summaries` | `--list` shows each reviewer (AI model or human) with description count, review rows, summaries, average score and totals. `--remove REVIEWER` deletes that reviewer from both tables after confirmation (`--yes` skips it); human reviewers from `reviewers` need `--force`. `review_verdict` is untouched. |
 
 ## Import behavior
 

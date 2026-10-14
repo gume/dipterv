@@ -51,6 +51,21 @@ services:
       - /var/lock/apache2
     restart: unless-stopped
 
+  admin-gui:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: admin-gui
+    volumes:
+      - ./data/db:/db                       # read-write: the only writer besides the reviewer GUI
+      - ./admin/html:/var/www/html:ro       # code is edited on the host, no rebuild needed
+    environment:
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}  # basic auth is enabled when set
+    ports:
+      - "8084:80"
+    restart: unless-stopped
+
   sqlite-web:
     image: tomdesinto/sqliteweb
     container_name: sqlite-web

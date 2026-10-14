@@ -86,7 +86,15 @@ var Dipterv = (function () {
             .done(function () {
                 if (text.trim()) doc.remarks[reviewer] = text.trim();
                 else delete doc.remarks[reviewer];
+                if (window.parent !== window && parent.pane) parent.pane.sync(doc);
             });
+    }
+
+    // Read-only rating; scores are set only in the review pane.
+    function starsReadonly(score) {
+        score = Number(score) || 0;
+        if (!score) return '';
+        return '<span class="stars-ro" data-tip="' + score + '/5">' + '\u2605'.repeat(score) + '\u2606'.repeat(5 - score) + '</span>';
     }
 
     // ---- reviewer identity (selection only, no authentication) ----
@@ -104,6 +112,7 @@ var Dipterv = (function () {
                 state.reviewer = select.value;
                 select.classList.toggle('unset', !state.reviewer);
                 setCookie('dipterv_reviewer', state.reviewer);
+                if (window.parent !== window && parent.pane) parent.pane.refresh();
                 if (onChange) onChange(state.reviewer);
             });
         }).fail(function () {
@@ -187,7 +196,7 @@ var Dipterv = (function () {
 
     return {
         state: state, esc: esc, notify: notify, loadReviewers: loadReviewers, reviewerName: reviewerName,
-        setVerdict: setVerdict, saveRemark: saveRemark, formatBadge: formatBadge, aiScores: aiScores,
+        setVerdict: setVerdict, saveRemark: saveRemark, starsReadonly: starsReadonly, formatBadge: formatBadge, aiScores: aiScores,
         aiAverage: aiAverage, aiModelCell: aiModelCell, verdictButtons: verdictButtons, markLast: markLast
     };
 })();

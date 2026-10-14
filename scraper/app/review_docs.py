@@ -83,6 +83,24 @@ class SummarySchema(BaseModel):
 	summary: str
 
 
+class DocumentReview(BaseModel):
+	document: str
+	results: list[AspectResult]
+
+
+class BatchReviewSchema(BaseModel):
+	documents: list[DocumentReview]
+
+
+class DocumentSummary(BaseModel):
+	document: str
+	summary: str
+
+
+class BatchSummarySchema(BaseModel):
+	summaries: list[DocumentSummary]
+
+
 def positive_int(value):
 	try:
 		parsed = int(value)
@@ -109,6 +127,18 @@ def parse_args(argv=None):
 		"--filename",
 		default=None,
 		help="Review only this import filename, replacing any existing review by the same reviewer.",
+	)
+	parser.add_argument(
+		"--summary-model",
+		default=None,
+		help="Model for the short summaries (same interface as --model); defaults to --model. Useful to spread API quota.",
+	)
+	parser.add_argument(
+		"--batch",
+		type=positive_int,
+		default=None,
+		metavar="N",
+		help="Review N descriptions per request (each still judged strictly on its own); default 1.",
 	)
 	return parser.parse_args(argv)
 
@@ -292,6 +322,106 @@ def request_summary(client, config, model, scores):
 	return average_score, f"Average {average_score:.2f}/5. {summary}"
 
 
+def batch_ids(rows):
+	return {f"D{number}": row for number, row in enumerate(rows, 1)}
+
+
+def build_batch_prompt(config, rows_by_id):
+	aspects = "\n".join(f'- key "{a["key"]}": {a["prompt"]}' for a in config["review"]["aspects"])
+	reasoning_language = config["review"].get("reasoning_language", "the language of the document")
+	documents = "\n\n".join(
+		f"=== DOCUMENT {doc_id} === ({row['degree']} student, {row['faculty']})\n<<<\n{document_body(row)}\n>>>"
+		for doc_id, row in rows_by_id.items()
+	)
+	return (
+		f"Below are {len(rows_by_id)} unrelated thesis descriptions. Treat every document as a completely separate, "
+		"individual review: judge each one only on its own text and degree level, with exactly the same rigor and "
+		"standards for all of them. Never compare documents, never let one document influence another's scores, and "
+		"do not relax or tighten the criteria because of the number or quality of the other documents.\n"
+		f"Write the reasoning in: {reasoning_language}.\n\n"
+		f"Questions (apply all of them to each document):\n{aspects}\n\n"
+		"Return exactly one entry per document id (" + ", ".join(rows_by_id) + "), each with exactly one result per key, "
+		"an integer score from 1 to 5 and concise, specific reasoning. Support each score with evidence from that "
+		"document's own text; quote exact errors or ambiguous phrases where relevant. Do not invent problems or "
+		"overlook definite defects.\n\n"
+		f"{documents}"
+	)
+
+
+def build_batch_summary_prompt(config, items):
+	reasoning_language = config["review"].get("reasoning_language", "the language of the document")
+	blocks = []
+	for doc_id, scores, average_score in items:
+		findings = "\n".join(f"- {aspect}: {score}/5. {reasoning}" for aspect, score, reasoning in scores)
+		blocks.append(f"=== DOCUMENT {doc_id} === exact mean {average_score:.2f}/5\n{findings}")
+	return (
+		f"Write one summary per document in {reasoning_language}; the documents are independent, so summarize each "
+		"only from its own findings. The application prepends the exact mean, so do not repeat or recalculate it. "
+		"Each summary: very concise (no more than 32 words), reflecting the mean and the most important strength "
+		"or weakness; surface a serious low-scoring issue even when the mean is high; no numeric scores; no filler. "
+		"Return exactly one entry per document id.\n\n" + "\n\n".join(blocks)
+	)
+
+
+def review_batch(client, config, model, summary_model, rows):
+	"""Reviews several documents in one request; returns [(row, (scores, average, summary) | Exception)]."""
+	rows_by_id = batch_ids(rows)
+	try:
+		review = request_structured(
+			client, config, model, build_batch_prompt(config, rows_by_id), BatchReviewSchema,
+			config["review"]["system_prompt"],
+		)
+	except Exception as error:
+		return [(row, error) for row in rows]
+
+	by_id = {item.document.strip().upper(): item for item in review.documents}
+	valid = {}
+	outcome = {}
+	for doc_id, row in rows_by_id.items():
+		item = by_id.get(doc_id)
+		try:
+			if item is None:
+				raise ValueError(f"No result for document {doc_id} in the batch answer.")
+			scores = validated_scores(config, ReviewSchema(results=item.results))
+			valid[doc_id] = (scores, sum(score for _, score, _ in scores) / len(scores))
+		except Exception as error:
+			outcome[doc_id] = error
+
+	if valid:
+		try:
+			summaries = request_structured(
+				client, config, summary_model,
+				build_batch_summary_prompt(config, [(d, s, a) for d, (s, a) in valid.items()]),
+				BatchSummarySchema,
+				"You write concise, evidence-based summaries of thesis-description reviews. Return only the requested JSON.",
+			)
+			summary_by_id = {item.document.strip().upper(): item.summary.strip() for item in summaries.summaries}
+		except Exception as error:
+			summary_by_id = {}
+			for doc_id in valid:
+				outcome[doc_id] = error
+		for doc_id, (scores, average_score) in valid.items():
+			if doc_id in outcome:
+				continue
+			summary = summary_by_id.get(doc_id)
+			if summary:
+				outcome[doc_id] = (scores, average_score, f"Average {average_score:.2f}/5. {summary}")
+			else:
+				outcome[doc_id] = ValueError(f"No summary for document {doc_id} in the batch answer.")
+	return [(row, outcome[doc_id]) for doc_id, row in rows_by_id.items()]
+
+
+def review_single(client, config, model, summary_model, row):
+	try:
+		body = document_body(row)
+		review = request_review(client, config, model, build_prompt(config, row, body))
+		scores = validated_scores(config, review)
+		average_score, summary = request_summary(client, config, summary_model, scores)
+		return row, (scores, average_score, summary)
+	except Exception as error:
+		return row, error
+
+
 def store_review(connection, row, reviewer, scores, average_score, summary):
 	key = (row["neptun_code"], row["version"], reviewer)
 	with connection:
@@ -357,26 +487,41 @@ def main(argv=None):
 		return 1 if args.filename else 0
 
 	stored = failures = 0
-	for number, row in enumerate(rows, 1):
-		print(f"[{number}/{len(rows)}] Reviewing {row['filename']} with {model}")
-		try:
-			body = document_body(row)
-			review = request_review(client, config, model, build_prompt(config, row, body))
-			scores = validated_scores(config, review)
-			average_score, summary = request_summary(client, config, model, scores)
-			store_review(connection, row, model, scores, average_score, summary)
-		except Exception as error:
-			failures += 1
-			print(f"ERROR: Review failed for {row['filename']}: {error}", file=sys.stderr)
-			continue
-		stored += 1
-		print(
-			f"Stored {row['filename']}: average={average_score:.2f}, "
-			+ ", ".join(f"{key}={score}" for key, score, _ in scores)
-		)
+	batch_size = args.batch or 1
+	summary_model = args.summary_model or model
+	if summary_model != model:
+		print(f"Aspects: {model}; summaries: {summary_model}")
+	processed = 0
+	for start in range(0, len(rows), batch_size):
+		chunk = rows[start:start + batch_size]
+		first, last = start + 1, start + len(chunk)
+		label = f"{first}" if first == last else f"{first}-{last}"
+		print(f"[{label}/{len(rows)}] Reviewing {', '.join(row['filename'] for row in chunk)} with {model}")
+		if batch_size == 1:
+			results = [review_single(client, config, model, summary_model, chunk[0])]
+		else:
+			results = review_batch(client, config, model, summary_model, chunk)
+		for row, outcome in results:
+			processed += 1
+			if isinstance(outcome, Exception):
+				failures += 1
+				print(f"ERROR: Review failed for {row['filename']}: {outcome}", file=sys.stderr)
+				continue
+			scores, average_score, summary = outcome
+			try:
+				store_review(connection, row, model, scores, average_score, summary)
+			except Exception as error:
+				failures += 1
+				print(f"ERROR: Review failed for {row['filename']}: {error}", file=sys.stderr)
+				continue
+			stored += 1
+			print(
+				f"Stored {row['filename']}: average={average_score:.2f}, "
+				+ ", ".join(f"{key}={score}" for key, score, _ in scores)
+			)
 
 	connection.close()
-	print(f"Review finished: processed {len(rows)}, stored {stored}, failed {failures}.")
+	print(f"Review finished: processed {processed}, stored {stored}, failed {failures}.")
 	return 1 if failures else 0
 
 

@@ -96,6 +96,69 @@ splitter.addEventListener('keydown', function(event) {
 });
 window.addEventListener('resize', function() {
     applySplitRatio(splitRatio);
+    applyPaneRatio(paneRatio);
+});
+
+// Vertical separator between the viewer and the review pane; the ratio is the pane's share of the right column.
+var paneSplitter = document.getElementById('pane-splitter');
+var PANE_MIN = 0.15;
+var PANE_MAX = 0.6;
+var paneRatio = 0.25;
+try {
+    var savedPaneRatio = Number(localStorage.getItem('dipterv_pane_ratio'));
+    if (savedPaneRatio >= PANE_MIN && savedPaneRatio <= PANE_MAX) paneRatio = savedPaneRatio;
+} catch (error) {
+    // Storage can be disabled by browser privacy settings.
+}
+
+function applyPaneRatio(ratio) {
+    paneRatio = Math.max(PANE_MIN, Math.min(PANE_MAX, ratio));
+    var total = document.getElementById('right').clientHeight - paneSplitter.offsetHeight;
+    if (total > 0) document.getElementById('review-pane').style.flexBasis = (paneRatio * total) + 'px';
+    paneSplitter.setAttribute('aria-valuenow', Math.round(paneRatio * 100));
+}
+
+function savePaneRatio() {
+    try {
+        localStorage.setItem('dipterv_pane_ratio', String(paneRatio));
+    } catch (error) {
+        // Storage can be disabled by browser privacy settings.
+    }
+}
+
+function updatePaneFromPointer(event) {
+    var rect = document.getElementById('right').getBoundingClientRect();
+    var divider = paneSplitter.offsetHeight;
+    applyPaneRatio((rect.bottom - event.clientY - divider / 2) / (rect.height - divider));
+}
+
+paneSplitter.addEventListener('pointerdown', function(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    paneSplitter.setPointerCapture(event.pointerId);
+    paneSplitter.classList.add('dragging');
+    updatePaneFromPointer(event);
+});
+paneSplitter.addEventListener('pointermove', function(event) {
+    if (paneSplitter.hasPointerCapture(event.pointerId)) updatePaneFromPointer(event);
+});
+paneSplitter.addEventListener('pointerup', function(event) {
+    if (paneSplitter.hasPointerCapture(event.pointerId)) paneSplitter.releasePointerCapture(event.pointerId);
+    paneSplitter.classList.remove('dragging');
+    savePaneRatio();
+});
+paneSplitter.addEventListener('pointercancel', function() {
+    paneSplitter.classList.remove('dragging');
+});
+paneSplitter.addEventListener('keydown', function(event) {
+    if (event.key === 'Home') paneRatio = PANE_MAX;
+    else if (event.key === 'End') paneRatio = PANE_MIN;
+    else if (event.key === 'ArrowUp') paneRatio += 0.02;
+    else if (event.key === 'ArrowDown') paneRatio -= 0.02;
+    else return;
+    event.preventDefault();
+    applyPaneRatio(paneRatio);
+    savePaneRatio();
 });
 
 function updateZoomUi() {
@@ -172,11 +235,14 @@ function switchMode(mode) {
     if (currentMode === nextMode) return;
     currentMode = nextMode;
     setCookie('dipterv_mode', nextMode);
+    pane.set(null);
     document.getElementById('mode-frame').src = nextMode + '.html' + aiParameter;
 }
 
-function displayFK(filename) {
+// doc is the table frame's own row object, so edits made here show up there and vice versa.
+function displayFK(filename, doc) {
     currentFilename = filename;
+    if (doc !== undefined) pane.set(doc);
     refreshView();
     return false;
 }
@@ -195,6 +261,100 @@ function resetPdfZoom() {
     renderCurrentPdfPage();
 }
 
+var pane = (function() {
+    var textArea = document.getElementById('pane-text');
+    var title = document.getElementById('pane-title');
+    var status = document.getElementById('pane-status');
+    var stars = Array.prototype.slice.call(document.querySelectorAll('#stars .star'));
+    var reviewers = [];
+    var doc = null;
+    var statusTimer = null;
+
+    fetch('reviewers.php').then(function(r) { return r.json(); }).then(function(list) {
+        reviewers = list;
+        render();
+    });
+
+    function reviewerId() {
+        var id = getCookie('dipterv_reviewer');
+        return reviewers.some(function(r) { return r.id === id; }) ? id : '';
+    }
+
+    function reviewerName(id) {
+        var found = reviewers.filter(function(r) { return r.id === id; })[0];
+        return found ? found.name : id;
+    }
+
+    function scoreOf(id) {
+        return doc && doc.remark_scores ? Number(doc.remark_scores[id]) || 0 : 0;
+    }
+
+    function drawStars(score, enabled) {
+        stars.forEach(function(button, index) {
+            button.textContent = index < score ? '\u2605' : '\u2606';
+            button.disabled = !enabled;
+            button.setAttribute('aria-checked', index + 1 === score ? 'true' : 'false');
+        });
+    }
+
+    function render() {
+        var id = reviewerId();
+        var enabled = !!(doc && id);
+        textArea.disabled = !enabled;
+        textArea.value = enabled ? ((doc.remarks || {})[id] || '') : '';
+        textArea.placeholder = !doc ? 'Select a document.' : (id ? 'Write your review here.' : 'Select a reviewer in the table toolbar first.');
+        title.textContent = id && doc ? 'Review (' + reviewerName(id) + ')' : 'Review';
+        drawStars(enabled ? scoreOf(id) : 0, enabled);
+    }
+
+    function say(message, isError) {
+        status.textContent = message;
+        status.className = isError ? 'error' : '';
+        clearTimeout(statusTimer);
+        statusTimer = setTimeout(function() { status.textContent = ''; }, isError ? 5000 : 2000);
+    }
+
+    function save(score) {
+        var id = reviewerId();
+        if (!doc || !id) return;
+        var target = doc;
+        var text = textArea.value.trim();
+        var body = new URLSearchParams({ action: 'remark', filename: target.filename, reviewer: id, text: text });
+        if (score !== undefined) body.set('score', score === 0 ? '' : String(score));
+        fetch('update.php', { method: 'POST', body: body }).then(function(response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            target.remarks = target.remarks || {};
+            target.remark_scores = target.remark_scores || {};
+            if (text) target.remarks[id] = text; else delete target.remarks[id];
+            if (score !== undefined) {
+                if (score) target.remark_scores[id] = score; else delete target.remark_scores[id];
+            }
+            say('Saved.');
+            var frame = document.getElementById('mode-frame').contentWindow;
+            if (frame && frame.onPaneSaved) frame.onPaneSaved(target);
+            render();
+        }).catch(function() { say('Save failed.', true); });
+    }
+
+    textArea.addEventListener('change', function() { save(); });
+    stars.forEach(function(button, index) {
+        button.addEventListener('click', function() {
+            // Clicking the current rating again clears it.
+            var id = reviewerId();
+            var next = scoreOf(id) === index + 1 ? 0 : index + 1;
+            save(next);
+        });
+    });
+
+    return {
+        set: function(next) { doc = next; render(); },
+        refresh: render,
+        // Called by the table frame after it saved the same document.
+        sync: function(changed) { if (changed === doc) render(); }
+    };
+})();
+window.pane = pane;
+
 document.getElementById('view-pdf').addEventListener('click', function() { setViewMode('pdf'); });
 document.getElementById('view-text').addEventListener('click', function() { setViewMode('text'); });
 document.getElementById('zoom-out').addEventListener('click', function() { changePdfZoom(-0.1); });
@@ -204,3 +364,4 @@ document.getElementById('zoom-in').addEventListener('click', function() { change
 refreshView();
 updateZoomUi();
 applySplitRatio(splitRatio);
+applyPaneRatio(paneRatio);

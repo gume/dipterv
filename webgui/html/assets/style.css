@@ -43,8 +43,137 @@ button, input, select, textarea {
 
 #right {
     flex: 1 1 0;
-    position: relative;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
+}
+
+#viewer {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#review-pane {
+    flex: 0 0 25%;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.5rem 0.75rem;
+    background: #f9fafb;
+}
+
+#pane-splitter {
+    position: relative;
+    z-index: 20;
+    flex: 0 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-top: 1px solid #d1d5db;
+    background: #e5e7eb;
+    cursor: row-resize;
+    touch-action: none;
+    user-select: none;
+}
+
+#pane-splitter:hover,
+#pane-splitter.dragging {
+    background: #cbd5e1;
+}
+
+#pane-splitter:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: -2px;
+}
+
+#pane-splitter-grip {
+    width: 3rem;
+    height: 1.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.4rem;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.16);
+}
+
+#pane-splitter-grip::before {
+    width: 1.4rem;
+    height: 3px;
+    content: "";
+    background: repeating-linear-gradient(to right, #64748b 0 2px, transparent 2px 5px);
+}
+
+#pane-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+#pane-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #374151;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#pane-status {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: #166534;
+}
+
+#pane-status.error {
+    color: #b91c1c;
+}
+
+#pane-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.25rem;
+    resize: none;
+}
+
+#pane-text:disabled {
+    background: #f3f4f6;
+}
+
+#stars {
+    display: inline-flex;
+}
+
+.star {
+    padding: 0 0.05rem;
+    border: 0;
+    background: none;
+    color: #f59e0b;
+    font-size: 1.6rem;
+    line-height: 1.1;
+    cursor: pointer;
+}
+
+.star:disabled {
+    color: #d1d5db;
+    cursor: default;
+}
+
+.stars-ro {
+    display: block;
+    margin-bottom: 0.15rem;
+    color: #f59e0b;
+    font-size: 0.95rem;
+    letter-spacing: 1px;
+    cursor: default;
 }
 
 #splitter {
@@ -148,8 +277,11 @@ button, input, select, textarea {
 
 #pdf-scroll,
 #text-view {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
     overflow: auto;
     padding: 3.5rem 0.5rem 0.5rem;
 }

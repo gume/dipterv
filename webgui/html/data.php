@@ -26,6 +26,7 @@ foreach ($rows as $row) {
     $row['template_status'] = $row['template_status'] === null ? null : (int)$row['template_status'];
     $row['format_issues'] = $issues;
     $row['remarks'] = [];
+    $row['remark_scores'] = [];
     $row['ai'] = [];
     $index[$row['neptun_code'] . '|' . $row['version']] = count($docs);
     $docs[] = $row;
@@ -39,7 +40,10 @@ foreach (fetch_all($db, 'SELECT neptun_code, version, reviewer, aspect, result, 
     }
     $i = $index[$key];
     if ($r['aspect'] === 'remark') {
-        $docs[$i]['remarks'][$r['reviewer']] = $r['result'];
+        $docs[$i]['remarks'][$r['reviewer']] = (string)$r['result'];
+        if ($r['score'] !== null) {
+            $docs[$i]['remark_scores'][$r['reviewer']] = (int)$r['score'];
+        }
     } else {
         if (!isset($docs[$i]['ai'][$r['reviewer']])) {
             $docs[$i]['ai'][$r['reviewer']] = [
@@ -74,6 +78,7 @@ if ($summaryTable) {
 
 foreach ($docs as &$doc) {
     $doc['remarks'] = (object)$doc['remarks'];
+    $doc['remark_scores'] = (object)$doc['remark_scores'];
     $doc['ai'] = (object)$doc['ai'];
 }
 unset($doc);

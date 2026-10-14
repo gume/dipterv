@@ -18,21 +18,43 @@
     </div>
 
     <div id="right">
-        <div id="view-controls">
-            <button type="button" id="view-pdf">PDF</button>
-            <button type="button" id="view-text">Text</button>
-            <span class="separator"></span>
-            <span id="zoom-controls">
-                <button type="button" id="zoom-out">-</button>
-                <button type="button" id="zoom-reset">100%</button>
-                <button type="button" id="zoom-in">+</button>
-                <span id="zoom-level">120%</span>
-            </span>
+        <div id="viewer">
+            <div id="view-controls">
+                <button type="button" id="view-pdf">PDF</button>
+                <button type="button" id="view-text">Text</button>
+                <span class="separator"></span>
+                <span id="zoom-controls">
+                    <button type="button" id="zoom-out">-</button>
+                    <button type="button" id="zoom-reset">100%</button>
+                    <button type="button" id="zoom-in">+</button>
+                    <span id="zoom-level">120%</span>
+                </span>
+            </div>
+            <div id="pdf-scroll">
+                <canvas id="the-canvas"></canvas>
+            </div>
+            <pre id="text-view"></pre>
         </div>
-        <div id="pdf-scroll">
-            <canvas id="the-canvas"></canvas>
+
+        <div id="pane-splitter" role="separator" tabindex="0" aria-label="Resize viewer and review pane"
+             aria-orientation="horizontal" aria-valuemin="15" aria-valuemax="60" aria-valuenow="25">
+            <span id="pane-splitter-grip" aria-hidden="true"></span>
         </div>
-        <pre id="text-view"></pre>
+
+        <div id="review-pane">
+            <div id="pane-head">
+                <span id="pane-title">Review</span>
+                <span id="stars" role="radiogroup" aria-label="Rating">
+                    <button type="button" class="star" data-star="1" aria-label="1 star">&#9734;</button>
+                    <button type="button" class="star" data-star="2" aria-label="2 stars">&#9734;</button>
+                    <button type="button" class="star" data-star="3" aria-label="3 stars">&#9734;</button>
+                    <button type="button" class="star" data-star="4" aria-label="4 stars">&#9734;</button>
+                    <button type="button" class="star" data-star="5" aria-label="5 stars">&#9734;</button>
+                </span>
+                <span id="pane-status"></span>
+            </div>
+            <textarea id="pane-text" rows="4" placeholder="Select a document and a reviewer."></textarea>
+        </div>
     </div>
 </div>
 

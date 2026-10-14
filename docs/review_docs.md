@@ -29,9 +29,15 @@ docker compose run --rm -e GEMINI_API_KEY playwright-runner \
 | `--model ID` | Model to use; also the reviewer id. Defaults to `llm.model` from the config. |
 | `--openai` | Use an OpenAI-compatible chat-completions API instead of Google; see below. |
 | `--filename NAME` | Review only this `import` filename; an existing review by the same reviewer is replaced. |
+| `--summary-model ID` | Model for the short summaries, using the same interface (Google or `--openai`) as `--model`. Defaults to `--model`. The reviewer id stays the `--model` value. Useful to spread free-tier quotas, e.g. `--model gemini-3.8-flash --summary-model gemini-3.5-flash-lite`. |
+| `--batch N` | Review N descriptions per request; see below. Default 1. |
 | `--config PATH` | Alternative TOML config (default `scraper/app/review_config.toml`). |
 
 Exit code: 0 on success, 1 if any review failed (or `--filename` matched nothing), 2 if the API key is missing.
+
+### Batch mode
+
+Without `--batch` every description is one aspects request plus one summary request. With `--batch N` the aspects of N descriptions are scored in one request and their summaries in one more request, so N descriptions cost 2 requests instead of 2N. Each description is labelled `D1`, `D2`, ... and the prompt requires every one to be judged strictly on its own text and degree, with identical rigor and no comparison between documents. Results are validated per description: one that is missing from the answer or has an invalid score fails alone (and stays pending) while the others are stored. Larger batches use more output and context, and a long batch answer may be less careful than separate requests, so keep N small (for example 3-5); the same prompts and aspects are used in both modes.
 
 ### OpenAI-compatible API
 

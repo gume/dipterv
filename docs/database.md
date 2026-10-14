@@ -39,7 +39,7 @@ One row per reviewer and aspect of an imported description: primary key `(neptun
 | `reviewer` | Reviewer id. AI reviewers use the model id (e.g. `gemini-3.5-flash-lite`); human reviewers use an id from `reviewers`. |
 | `aspect` | Reviewed aspect, e.g. `goal_clarity`. Human remarks use the aspect `remark`. |
 | `result` | Review text (reasoning or remark). |
-| `score` | Integer 1-5 (1 unacceptable, 3 average, 5 superior); NULL for human remarks. |
+| `score` | Integer 1-5. AI aspects: 1 unacceptable, 3 average, 5 superior. Human `remark` rows: the reviewer's star rating, set only in the web UI review pane (NULL = not rated). |
 | `updated_at` | UTC timestamp. |
 
 ### `review_verdict`
@@ -102,11 +102,12 @@ The PDF itself is served from `/data` (host-side `data/td`), not from SQLite; SQ
 | `scraper/app/prepare_docs.py` and `scraper/app/create_db.py` | Write | Read eligible task rows from Excel and reconcile the `import` table. `prepare_docs.py` syncs metadata before downloading PDFs and syncs any resulting filename changes afterward. |
 | `scraper/app/extract_docs.py` | Reads `import`; writes `extract` | Selects pending filenames from the database, sends PDFs and templates to the configured Google GenAI model, and stores structured extraction results. |
 | `scraper/app/review_docs.py` | Reads `import`, `extract`; writes `reviews`, `review_summaries` | Stores per-aspect scores/reasoning and a per-model average/summary; see [review_docs.md](review_docs.md). |
-| `webgui/html/data.php` | Reads | Returns one JSON object per `import` row with its `extract` format check (`template_status` and the cause list), `review_verdict`, human remarks (`reviews` aspect `remark`, keyed by reviewer), and AI scores/summaries/averages keyed by model. Opens the database read-only. |
+| `webgui/html/data.php` | Reads | Returns one JSON object per `import` row with its `extract` format check (`template_status` and the cause list), `review_verdict`, human remarks and star ratings (`remarks` and `remark_scores`, keyed by reviewer), and AI scores/summaries/averages keyed by model. Opens the database read-only. |
 | `webgui/html/reviewers.php` | Reads | Returns the `reviewers` list. |
 | `webgui/html/body.php` | Reads | Returns the extracted description body (same text as `review_docs.py` reviews) for the text view. |
-| `webgui/html/update.php` | Writes | `action=remark`: stores or (when empty) deletes a human remark in `reviews` for the chosen reviewer. `action=verdict`: sets `review_verdict.status`. Uses prepared statements and validates the reviewer and verdict values. |
-| `webgui/html/browse.html`, `review.html` | Via the PHP endpoints | Overview table and one-by-one review. Styles are in `style.css`, shared code in `common.js`; the PDF/text pane is in `index.html`. |
+| `webgui/html/update.php` | Writes | `action=remark`: sets the human remark text and/or the 1-5 rating of the chosen reviewer in `reviews`. A field that is not sent keeps its stored value; the row is deleted when both text and rating are empty. `action=verdict`: sets `review_verdict.status`. Uses prepared statements and validates the reviewer, rating and verdict values. |
+| `webgui/html/index.html` | Via the PHP endpoints | Right side: PDF/text viewer with, below it, the review pane (text box and 5-star rating) of the selected reviewer for the current document. The text is kept in sync with the table (or review page) text; the rating is set only here. |
+| `webgui/html/browse.html`, `review.html` | Via the PHP endpoints | Overview table and one-by-one review. In the table each human reviewer column shows the read-only rating above the text and sorts by it. Styles are in `style.css`, shared code in `common.js`; the PDF/text pane is in `index.html`. |
 | `scraper/app/notok.py` | Reads | Prints the descriptions with verdict `nogo`, grouped by supervisor, with the human remarks. |
 | `scraper/app/manage_reviews.py` | Reads/deletes `reviews`, `review_summaries` | `--list` shows each reviewer (AI model or human) with description count, review rows, summaries, average score and totals. `--remove REVIEWER` deletes that reviewer from both tables after confirmation (`--yes` skips it); human reviewers from `reviewers` need `--force`. `review_verdict` is untouched. |
 

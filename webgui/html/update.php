@@ -20,18 +20,38 @@ if ($action === 'remark') {
     if (!fetch_all($db, 'SELECT 1 FROM reviewers WHERE id = ?', [$reviewer])) {
         json_out(['error' => 'Unknown reviewer.'], 400);
     }
-    $text = trim($_POST['text'] ?? '');
-    if ($text === '') {
+    // A missing field keeps its stored value, so text-only saves never erase the rating and vice versa.
+    $stmt = $db->prepare('SELECT result, score FROM reviews WHERE neptun_code = ? AND version = ? AND reviewer = ? AND aspect = \'remark\'');
+    $stmt->bindValue(1, $neptun);
+    $stmt->bindValue(2, $version);
+    $stmt->bindValue(3, $reviewer);
+    $existing = $stmt->execute()->fetchArray(SQLITE3_ASSOC) ?: ['result' => '', 'score' => null];
+
+    $text = array_key_exists('text', $_POST) ? trim($_POST['text']) : (string)$existing['result'];
+    $score = $existing['score'] === null ? null : (int)$existing['score'];
+    if (array_key_exists('score', $_POST)) {
+        if ($_POST['score'] === '') {
+            $score = null;
+        } else {
+            $score = filter_var($_POST['score'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 5]]);
+            if ($score === false) {
+                json_out(['error' => 'Score must be 1-5.'], 400);
+            }
+        }
+    }
+
+    if ($text === '' && $score === null) {
         $stmt = $db->prepare('DELETE FROM reviews WHERE neptun_code = ? AND version = ? AND reviewer = ? AND aspect = \'remark\'');
         $stmt->bindValue(1, $neptun);
         $stmt->bindValue(2, $version);
         $stmt->bindValue(3, $reviewer);
     } else {
-        $stmt = $db->prepare('INSERT OR REPLACE INTO reviews (neptun_code, version, reviewer, aspect, result, updated_at) VALUES (?, ?, ?, \'remark\', ?, datetime(\'now\'))');
+        $stmt = $db->prepare('INSERT OR REPLACE INTO reviews (neptun_code, version, reviewer, aspect, result, score, updated_at) VALUES (?, ?, ?, \'remark\', ?, ?, datetime(\'now\'))');
         $stmt->bindValue(1, $neptun);
         $stmt->bindValue(2, $version);
         $stmt->bindValue(3, $reviewer);
         $stmt->bindValue(4, $text);
+        $stmt->bindValue(5, $score, $score === null ? SQLITE3_NULL : SQLITE3_INTEGER);
     }
     $stmt->execute();
 } elseif ($action === 'verdict') {

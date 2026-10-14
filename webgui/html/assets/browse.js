@@ -12,13 +12,15 @@ function textOf(value) {
 function remarkColumn(reviewer) {
     return {
         title: Dipterv.esc(reviewer.name),
-        orderable: false,
         data: null,
+        type: 'num',
         render: function (doc, type) {
             var text = textOf(doc.remarks[reviewer.id]);
+            var score = Number((doc.remark_scores || {})[reviewer.id]) || 0;
+            if (type === 'sort' || type === 'type') return score;
             if (type !== 'display') return text;
             var editable = Dipterv.state.reviewer === reviewer.id;
-            return '<textarea class="remark" data-reviewer="' + Dipterv.esc(reviewer.id) + '"' +
+            return Dipterv.starsReadonly(score) + '<textarea class="remark" data-reviewer="' + Dipterv.esc(reviewer.id) + '"' +
                 (editable ? '' : ' readonly') + '>' + Dipterv.esc(text) + '</textarea>';
         }
     };
@@ -118,6 +120,15 @@ function docOf(element) {
     return table.row($(element).closest('tr')).data();
 }
 
+// The review pane saved this document; show its text and rating in the table.
+window.onPaneSaved = function (doc) {
+    if (!table) return;
+    table.rows().every(function () {
+        if (this.data() === doc) this.invalidate();
+    });
+    table.draw(false);
+};
+
 $(function () {
     var params = new URLSearchParams(window.parent.location.search);
     aiMode = params.has('ai');
@@ -133,7 +144,8 @@ $(function () {
     });
 
     $('#docs').on('click', '.open-pdf', function () {
-        parent.displayFK(docOf(this).filename);
+        var doc = docOf(this);
+        parent.displayFK(doc.filename, doc);
     });
 
     $('#docs').on('click', '.verdict-btn', function () {

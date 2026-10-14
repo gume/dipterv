@@ -76,7 +76,7 @@ function goTo(idx) {
     document.getElementById('nav-next').disabled = none || currentIdx >= filteredDocs.length - 1;
     document.getElementById('nav-last').disabled = none || currentIdx >= filteredDocs.length - 1;
 
-    if (doc && parent.displayFK) parent.displayFK(doc.filename);
+    if (doc && parent.displayFK) parent.displayFK(doc.filename, doc);
     renderVerdict();
     loadNotes();
     updateHistory();
@@ -87,6 +87,12 @@ function applyFilter() {
     filteredDocs = allDocs.filter(passesFilter);
     goTo(0);
 }
+
+// The review pane saved this document; refresh the notes box and the history.
+window.onPaneSaved = function (doc) {
+    if (doc === currentDoc()) loadNotes();
+    updateHistory();
+};
 
 function saveReview() {
     if (!Dipterv.state.reviewer) {

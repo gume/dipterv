@@ -22,6 +22,7 @@ IMPORT_COLUMNS = (
     "version",
     "student_name",
     "supervisor_name",
+    "supervisor_code",
     "degree",
     "faculty",
     "subject",
@@ -37,6 +38,7 @@ HUMAN_REVIEWERS = (
 )
 EXTRACT_COLUMNS = {
     "template_status": "INTEGER",
+    "page_count": "INTEGER",
     "detected_template": "TEXT",
     "header_dept_head": "TEXT",
     "thesis_type": "TEXT",
@@ -90,6 +92,7 @@ def load_import_rows(workbook_path, data_dir="/data"):
         "Hallgató Neptun kódja",
         "Hallgató neve",
         "Konzulens neve",
+        "Konzulens Neptun kódja",
         "Képzés",
         "Szak",
         "Tantárgy",
@@ -146,6 +149,7 @@ def load_import_rows(workbook_path, data_dir="/data"):
             "version": version,
             "student_name": normalize_text(row["Hallgató neve"]),
             "supervisor_name": normalize_text(row["Konzulens neve"]),
+            "supervisor_code": (normalize_text(row["Konzulens Neptun kódja"]) or "").upper() or None,
             "degree": normalize_text(row["Képzés"]),
             "faculty": normalize_text(row["Szak"]),
             "subject": normalize_text(row["Tantárgy"]),
@@ -171,6 +175,7 @@ def ensure_schema(connection):
             version INTEGER NOT NULL,
             student_name TEXT,
             supervisor_name TEXT,
+            supervisor_code TEXT,
             degree TEXT,
             faculty TEXT,
             subject TEXT,
@@ -209,12 +214,73 @@ def ensure_schema(connection):
             id TEXT PRIMARY KEY NOT NULL,
             name TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS "supervisors" (
+            neptun_code TEXT PRIMARY KEY NOT NULL,
+            name TEXT NOT NULL,
+            alt_name TEXT
+        );
+        CREATE TABLE IF NOT EXISTS "settings" (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT
+        );
         """
     )
     connection.executemany(
         'INSERT OR IGNORE INTO "reviewers" (id, name) VALUES (?, ?)', HUMAN_REVIEWERS
     )
     ensure_extract_schema(connection)
+    ensure_supervisor_schema(connection)
+
+
+def ensure_supervisor_schema(connection):
+    columns = {row[1] for row in connection.execute('PRAGMA table_info("supervisors")')}
+    if columns and "alt_name" not in columns:
+        connection.execute('ALTER TABLE "supervisors" ADD COLUMN alt_name TEXT')
+
+
+def load_supervisor_rows(workbook_path):
+    """Distinct (neptun_code, name) pairs of the supervisors listed in the workbook."""
+    workbook = load_workbook(workbook_path, read_only=True, data_only=True)
+    sheet = workbook.active
+    headers = [normalize_text(cell) for cell in next(sheet.iter_rows(min_row=4, max_row=4, values_only=True))]
+    try:
+        neptun_index = headers.index("Konzulens Neptun kódja")
+        name_index = headers.index("Konzulens neve")
+    except ValueError:
+        workbook.close()
+        raise ValueError("Workbook is missing the supervisor Neptun code or name column.")
+    supervisors = {}
+    for cells in sheet.iter_rows(min_row=5, values_only=True):
+        neptun = normalize_text(cells[neptun_index]) if neptun_index < len(cells) else None
+        name = normalize_text(cells[name_index]) if name_index < len(cells) else None
+        if neptun and name:
+            supervisors[neptun.upper()] = name
+    workbook.close()
+    return supervisors
+
+
+def sync_supervisors(supervisors, database_path=DATABASE_PATH):
+    """Add new supervisors and refresh names; manually set alt_name values are kept."""
+    connection = sqlite3.connect(database_path)
+    try:
+        ensure_schema(connection)
+        for neptun, name in supervisors.items():
+            current = connection.execute(
+                'SELECT name FROM supervisors WHERE neptun_code = ?', (neptun,)
+            ).fetchone()
+            if current is None:
+                connection.execute(
+                    'INSERT INTO supervisors (neptun_code, name) VALUES (?, ?)', (neptun, name)
+                )
+                print(f"Added supervisor {neptun}: {name}")
+            elif current[0] != name:
+                connection.execute(
+                    'UPDATE supervisors SET name = ? WHERE neptun_code = ?', (name, neptun)
+                )
+                print(f"WARNING: Supervisor {neptun} renamed: {current[0]} -> {name}")
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def ensure_extract_schema(connection):
@@ -226,6 +292,10 @@ def ensure_extract_schema(connection):
         f'CREATE TABLE IF NOT EXISTS "extract" ('
         f'filename TEXT PRIMARY KEY NOT NULL, {column_definitions})'
     )
+    existing = {row[1] for row in connection.execute('PRAGMA table_info("extract")')}
+    for column, column_type in EXTRACT_COLUMNS.items():
+        if column not in existing:
+            connection.execute(f'ALTER TABLE "extract" ADD COLUMN "{column}" {column_type}')
 
 
 def sync_import_records(records, database_path=DATABASE_PATH):
@@ -297,7 +367,7 @@ def main():
         raise SystemExit("Usage: create_db.py <workbook.xlsx>")
     records = load_import_rows(sys.argv[1])
     sync_import_records(records)
-
+    sync_supervisors(load_supervisor_rows(sys.argv[1]))
 
 if __name__ == "__main__":
     main()

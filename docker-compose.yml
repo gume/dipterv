@@ -27,12 +27,29 @@ services:
     volumes:
       - ./data/td:/data
       - ./data/db:/db
-      - ./webgui/html:/var/www/html
-      - ./webgui/entrypoint.sh:/entrypoint.sh
+      - ./reviewer/html:/var/www/html
+      - ./reviewer/entrypoint.sh:/entrypoint.sh
     ports:
       - "8081:80"
     entrypoint: ["/bin/bash", "/entrypoint.sh"]
     command: ["apache2-foreground"]
+
+  supervisor-gui:
+    build:
+      context: ./supervisor
+      dockerfile: Dockerfile
+    container_name: supervisor-gui
+    volumes:
+      - ./data/db:/db:ro     # read-only: this service never writes the database
+      - ./supervisor/html:/var/www/html:ro   # code is edited on the host, no rebuild needed
+    ports:
+      - "8083:80"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/apache2
+      - /var/lock/apache2
+    restart: unless-stopped
 
   sqlite-web:
     image: tomdesinto/sqliteweb

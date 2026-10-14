@@ -101,7 +101,7 @@ def parse_args(argv=None):
 	parser.add_argument(
 		"--model",
 		default="gemini-3.5-flash-lite",
-		help="Google GenAI model ID; model names containing 'gemma' use a first-page image.",
+		help="Google GenAI model ID; model names containing 'gemma' use a first-page image (default: gemini-3.5-flash-lite).",
 	)
 	parser.add_argument(
 		"--timeout",
@@ -114,6 +114,15 @@ def parse_args(argv=None):
 		type=nonnegative_int,
 		default=None,
 		help="Maximum number of pending PDF files to send for extraction; existing extract rows do not count.",
+	)
+	parser.add_argument(
+		"--reload",
+		nargs="?",
+		const="",
+		default=None,
+		metavar="FILENAME",
+		help="Re-extract and recheck already extracted descriptions: all of them, or only FILENAME. "
+		"Missing values are added; changed values are overwritten with a warning.",
 	)
 	parser.add_argument(
 		"--json",
@@ -247,11 +256,24 @@ MINOR_MISSING_RULE_SETS = [
 ]
 
 
-def template_status(result):
+def count_pages(pdf_path):
+	with pymupdf.open(pdf_path) as document:
+		return document.page_count
+
+
+def page_count_issue(page_count):
+	if page_count is not None and page_count != 1:
+		return f"Page count: the description has {page_count} pages, it must be exactly one page"
+	return None
+
+
+def template_status(result, page_count=None):
 	"""0: everything ok, 1: minor problems, 2: critical problems."""
 	missing = set(result.missing_boilerplate_rules)
 	discrepancies = result.layout_discrepancies
 
+	if page_count_issue(page_count):
+		return 2
 	if not missing and not discrepancies:
 		return 0
 	if not discrepancies and any(missing == rules for rules in MINOR_MISSING_RULE_SETS):
@@ -259,13 +281,18 @@ def template_status(result):
 	return 2
 
 
-def result_database_values(result):
+def result_database_values(result, page_count=None):
+	discrepancies = list(result.layout_discrepancies)
+	issue = page_count_issue(page_count)
+	if issue:
+		discrepancies.append(issue)
 	visual_elements = {
 		element.element_type: element
 		for element in result.visual_elements
 	}
 	return {
-		"template_status": template_status(result),
+		"template_status": template_status(result, page_count),
+		"page_count": page_count,
 		"detected_template": result.detected_template,
 		"header_dept_head": result.header_dept_head,
 		"thesis_type": result.thesis_type,
@@ -280,7 +307,7 @@ def result_database_values(result):
 			result.missing_boilerplate_rules, ensure_ascii=False
 		),
 		"layout_discrepancies_json": json.dumps(
-			result.layout_discrepancies, ensure_ascii=False
+			discrepancies, ensure_ascii=False
 		),
 		"student_name": result.student_name,
 		"student_status": result.student_status,
@@ -312,6 +339,86 @@ def store_result(connection, filename, values):
 	connection.commit()
 
 
+def merge_result(connection, filename, values):
+	"""Add missing values, overwrite changed ones with a warning."""
+	connection.row_factory = sqlite3.Row
+	try:
+		current = connection.execute(
+			'SELECT * FROM "extract" WHERE filename = ?', (filename,)
+		).fetchone()
+	finally:
+		connection.row_factory = None
+	if current is not None:
+		added = []
+		for column, new_value in values.items():
+			old_value = current[column]
+			if old_value == new_value:
+				continue
+			if old_value in (None, ""):
+				added.append(column)
+			else:
+				print(
+					f"WARNING: {filename}: {column} changed; overwriting "
+					f"{str(old_value)[:80]!r} -> {str(new_value)[:80]!r}",
+					file=sys.stderr,
+				)
+		if added:
+			print(f"Added missing data for {filename}: {', '.join(added)}")
+	store_result(connection, filename, values)
+
+
+def reload_filenames(connection, data_dir, target, limit=None):
+	if limit == 0:
+		return []
+	if target:
+		known = connection.execute('SELECT 1 FROM "import" WHERE filename = ?', (target,)).fetchone()
+		if not known:
+			raise SystemExit(f"ERROR: {target} is not in the import table.")
+		filenames = [target]
+	else:
+		filenames = [row[0] for row in connection.execute('SELECT filename FROM "import" ORDER BY row_id, filename')]
+	selected = []
+	for filename in filenames:
+		if not (Path(data_dir) / filename).is_file():
+			print(f"WARNING: PDF not found for database record: {Path(data_dir) / filename}", file=sys.stderr)
+			continue
+		selected.append(filename)
+		if limit is not None and len(selected) >= limit:
+			break
+	return selected
+
+
+def backfill_page_counts(connection, data_dir):
+	"""Count pages of already extracted PDFs without calling the model."""
+	rows = connection.execute(
+		'SELECT filename, layout_discrepancies_json FROM "extract" WHERE page_count IS NULL'
+	).fetchall()
+	for filename, discrepancies_json in rows:
+		pdf_path = Path(data_dir) / filename
+		if not pdf_path.is_file():
+			continue
+		try:
+			page_count = count_pages(str(pdf_path))
+		except Exception as error:
+			print(f"ERROR: Cannot count pages of {filename}: {error}", file=sys.stderr)
+			continue
+		issue = page_count_issue(page_count)
+		if issue:
+			discrepancies = json.loads(discrepancies_json or "[]")
+			discrepancies.append(issue)
+			connection.execute(
+				'UPDATE "extract" SET page_count = ?, template_status = 2, '
+				'layout_discrepancies_json = ? WHERE filename = ?',
+				(page_count, json.dumps(discrepancies, ensure_ascii=False), filename),
+			)
+			print(f"Critical: {filename} has {page_count} pages.")
+		else:
+			connection.execute(
+				'UPDATE "extract" SET page_count = ? WHERE filename = ?', (page_count, filename)
+			)
+	connection.commit()
+
+
 def main(argv=None):
 	args = parse_args(argv)
 	templates = load_templates(args.templates_dir)
@@ -319,7 +426,12 @@ def main(argv=None):
 
 	connection = sqlite3.connect(args.database)
 	ensure_extract_schema(connection)
-	files = pending_pdf_filenames(connection, args.data_dir, list(templates), args.limit)
+	connection.commit()
+	if args.reload is not None:
+		files = reload_filenames(connection, args.data_dir, args.reload, args.limit)
+	else:
+		backfill_page_counts(connection, args.data_dir)
+		files = pending_pdf_filenames(connection, args.data_dir, list(templates), args.limit)
 	if not files:
 		print("No files need extraction.")
 		connection.close()
@@ -337,7 +449,12 @@ def main(argv=None):
 		print(f"[{processed}{f'/{args.limit}' if args.limit is not None else ''}] Extracting {filename}")
 		try:
 			result = extract_pdf(client, str(pdf_path), args.model, prompt)
-			store_result(connection, filename, result_database_values(result))
+			page_count = count_pages(str(pdf_path))
+			values = result_database_values(result, page_count)
+			if args.reload is not None:
+				merge_result(connection, filename, values)
+			else:
+				store_result(connection, filename, values)
 		except Exception as error:
 			failures += 1
 			print(f"ERROR: Extraction failed for {filename}: {error}", file=sys.stderr)
@@ -349,7 +466,7 @@ def main(argv=None):
 		else:
 			print(
 				f"Stored {filename}: template={result.detected_template}, "
-				f"status={template_status(result)}, "
+				f"status={template_status(result, page_count)}, pages={page_count}, "
 				f"missing_boilerplate={len(result.missing_boilerplate_rules)}"
 			)
 

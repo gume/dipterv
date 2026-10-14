@@ -11,7 +11,7 @@ ENV PATH="/venv/bin:$PATH"
 RUN uv pip install --no-cache-dir playwright && \
     playwright install chromium
 
-RUN uv pip install --no-cache-dir openpyxl pandas pypdf pymupdf pdfplumber language_tool_python google-genai openai pydantic && \
+RUN uv pip install --no-cache-dir openpyxl pandas pypdf pymupdf pdfplumber language_tool_python google-genai openai pydantic
 
 WORKDIR /app
 

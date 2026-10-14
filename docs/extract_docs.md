@@ -16,7 +16,7 @@
 | NULL | Not extracted. |
 | 0 | No missing boilerplate rules and no layout discrepancies. |
 | 1 | Minor: no layout discrepancies and the missing rules match a set in `MINOR_MISSING_RULE_SETS` (currently only `task_intro`). |
-| 2 | Critical: anything else. |
+| 2 | Critical: anything else, including a PDF with more than one page (`page_count`, counted locally with PyMuPDF). |
 
 ## Stored data
 
@@ -42,6 +42,7 @@ docker compose run --rm -e GEMINI_API_KEY playwright-runner \
 | `--database PATH` | `/db/descriptions.sqlite` | SQLite file. |
 | `--data-dir PATH` | `/data` | Directory with the PDFs. |
 | `--templates-dir PATH` | `scraper/app/templates` | Template JSON directory. |
+| `--reload [FILENAME]` | off | Re-extract and recheck all descriptions (or only FILENAME) regardless of existing rows. Missing values are added; changed values are overwritten with a warning. `--limit` still applies. |
 | `--json` | off | Print each extracted result as JSON. |
 
 Exit code is 1 if any extraction failed. Failed files are not stored and stay pending.

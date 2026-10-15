@@ -269,6 +269,8 @@ var pane = (function() {
     var reviewers = [];
     var doc = null;
     var statusTimer = null;
+    var dirty = false;
+    var saveButton = document.getElementById('pane-save');
 
     fetch('reviewers.php').then(function(r) { return r.json(); }).then(function(list) {
         reviewers = list;
@@ -307,11 +309,24 @@ var pane = (function() {
         drawStars(enabled ? scoreOf(id) : 0, enabled);
     }
 
+    function setDirty(value) {
+        dirty = value;
+        saveButton.disabled = !value;
+        if (value) {
+            clearTimeout(statusTimer);
+            status.textContent = 'Unsaved changes';
+            status.className = 'dirty';
+        }
+    }
+
     function say(message, isError) {
         status.textContent = message;
         status.className = isError ? 'error' : '';
         clearTimeout(statusTimer);
-        statusTimer = setTimeout(function() { status.textContent = ''; }, isError ? 5000 : 2000);
+        statusTimer = setTimeout(function() {
+            if (dirty) { status.textContent = 'Unsaved changes'; status.className = 'dirty'; }
+            else status.textContent = '';
+        }, isError ? 5000 : 2000);
     }
 
     function save(score) {
@@ -323,6 +338,7 @@ var pane = (function() {
         if (score !== undefined) body.set('score', score === 0 ? '' : String(score));
         fetch('update.php', { method: 'POST', body: body }).then(function(response) {
             if (!response.ok) throw new Error('HTTP ' + response.status);
+            if (target === doc && textArea.value.trim() === text) setDirty(false);
             target.remarks = target.remarks || {};
             target.remark_scores = target.remark_scores || {};
             if (text) target.remarks[id] = text; else delete target.remarks[id];
@@ -336,7 +352,12 @@ var pane = (function() {
         }).catch(function() { say('Save failed.', true); });
     }
 
+    textArea.addEventListener('input', function() { setDirty(true); });
     textArea.addEventListener('change', function() { save(); });
+    saveButton.addEventListener('click', function() { save(); });
+    textArea.addEventListener('keydown', function(event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); save(); }
+    });
     stars.forEach(function(button, index) {
         button.addEventListener('click', function() {
             // Clicking the current rating again clears it.
@@ -347,7 +368,14 @@ var pane = (function() {
     });
 
     return {
-        set: function(next) { doc = next; render(); },
+        set: function(next) {
+            if (dirty && doc && doc !== next) save();
+            dirty = false;
+            saveButton.disabled = true;
+            status.textContent = '';
+            doc = next;
+            render();
+        },
         refresh: render,
         // Called by the table frame after it saved the same document.
         sync: function(changed) { if (changed === doc) render(); }

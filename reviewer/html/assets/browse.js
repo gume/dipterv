@@ -4,6 +4,47 @@ var filters = { go: true, nogo: true, undecided: true, last: false };
 var aiMode = false;
 var aiModels = [];
 var filterRegistered = false;
+var hiddenAiModels = {};
+var selectedDoc = null;
+var aiColumnStart = 0;
+var hiddenReviewers = {};
+var reviewerColumnStart = 0;
+
+function renderReviewerToggles(reviewers) {
+    var box = $('#reviewer-toggles');
+    box.find('.column-toggle').remove();
+    box.prop('hidden', !reviewers.length);
+    reviewers.forEach(function (reviewer, index) {
+        $('<button type="button" class="column-toggle"></button>')
+            .text(reviewer.name)
+            .toggleClass('active', !hiddenReviewers[reviewer.id])
+            .on('click', function () {
+                hiddenReviewers[reviewer.id] = !hiddenReviewers[reviewer.id];
+                this.classList.toggle('active', !hiddenReviewers[reviewer.id]);
+                if (table) table.column(reviewerColumnStart + index).visible(!hiddenReviewers[reviewer.id]);
+            })
+            .appendTo(box);
+    });
+}
+
+function renderAiToggles() {
+    var box = $('#ai-toggles');
+    box.find('.column-toggle').remove();
+    box.prop('hidden', !aiMode || !aiModels.length);
+    if (!aiMode) return;
+    aiModels.forEach(function (model, index) {
+        $('<button type="button" class="column-toggle"></button>')
+            .text(aiModels.length === 1 ? 'AI' : 'AI#' + (index + 1))
+            .attr('title', model)
+            .toggleClass('active', !hiddenAiModels[model])
+            .on('click', function () {
+                hiddenAiModels[model] = !hiddenAiModels[model];
+                this.classList.toggle('active', !hiddenAiModels[model]);
+                if (table) table.column(aiColumnStart + index).visible(!hiddenAiModels[model]);
+            })
+            .appendTo(box);
+    });
+}
 
 function textOf(value) {
     return value == null ? '' : String(value);
@@ -64,16 +105,23 @@ function buildTable() {
         }
     ];
 
-    var aiColumnStart = columns.length;
+    aiColumnStart = columns.length;
     if (aiMode) aiModels.forEach(function (model, index) {
         columns.push(aiModelColumn(model, index));
+        columns[columns.length - 1].visible = !hiddenAiModels[model];
     });
 
     var reviewers = Dipterv.state.reviewers.slice();
     reviewers.sort(function (a, b) {
         return Number(b.id === Dipterv.state.reviewer) - Number(a.id === Dipterv.state.reviewer);
     });
-    columns = columns.concat(reviewers.map(remarkColumn), [{
+    reviewerColumnStart = columns.length;
+    renderReviewerToggles(reviewers);
+    columns = columns.concat(reviewers.map(function (reviewer) {
+        var column = remarkColumn(reviewer);
+        column.visible = !hiddenReviewers[reviewer.id];
+        return column;
+    }), [{
         title: 'Verdict', data: null,
         render: function (doc, type) {
             return type === 'display' ? Dipterv.verdictButtons(doc) : doc.verdict;
@@ -83,7 +131,9 @@ function buildTable() {
     table = $('#docs').DataTable({
         data: docs,
         columns: columns,
-        createdRow: function (row, doc) { $(row).data('doc', doc); },
+        createdRow: function (row, doc) {
+            $(row).data('doc', doc).toggleClass('selected-row', doc === selectedDoc);
+        },
         paging: false,
         autoWidth: false,
         ordering: true,
@@ -145,6 +195,9 @@ $(function () {
 
     $('#docs').on('click', '.open-pdf', function () {
         var doc = docOf(this);
+        selectedDoc = doc;
+        $('#docs tbody tr.selected-row').removeClass('selected-row');
+        $(this).closest('tr').addClass('selected-row');
         parent.displayFK(doc.filename, doc);
     });
 
@@ -172,6 +225,7 @@ $(function () {
             Object.keys(doc.ai).forEach(function (model) { modelSet[model] = true; });
         });
         aiModels = Object.keys(modelSet).sort();
+        renderAiToggles();
         buildTable();
     }).fail(function () {
         Dipterv.notify('Could not load the data.', true);

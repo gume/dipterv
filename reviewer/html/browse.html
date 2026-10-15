@@ -6,7 +6,7 @@
 <script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=20261015">
 </head>
 <body>
 <div id="browse-wrap">
@@ -19,12 +19,18 @@
         <button type="button" class="filter-toggle active" data-filter="nogo">No-go</button>
         <button type="button" class="filter-toggle active" data-filter="undecided">Undecided</button>
         <button type="button" class="filter-toggle" data-filter="last">last</button>
+        <span id="ai-toggles" hidden>
+            <span class="toolbar-label">Show AI columns</span>
+        </span>
+        <span id="reviewer-toggles" hidden>
+            <span class="toolbar-label">Show reviewer columns</span>
+        </span>
     </div>
     <div id="table-wrapper">
         <table id="docs" class="display"></table>
     </div>
 </div>
-<script src="assets/common.js"></script>
-<script src="assets/browse.js"></script>
+<script src="assets/common.js?v=20261015"></script>
+<script src="assets/browse.js?v=20261015"></script>
 </body>
 </html>

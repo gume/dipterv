@@ -134,6 +134,33 @@ button, input, select, textarea {
     color: #b91c1c;
 }
 
+#pane-status.dirty {
+    color: #b45309;
+    font-weight: 600;
+}
+
+#pane-save {
+    padding: 0.15rem 0.7rem;
+    border: 1px solid #1f2937;
+    border-radius: 0.3rem;
+    background: #1f2937;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+#pane-save:disabled {
+    background: #e5e7eb;
+    border-color: #d1d5db;
+    color: #9ca3af;
+    cursor: default;
+}
+
+#docs tbody tr.selected-row > td {
+    background-color: #fef3c7 !important;
+    box-shadow: inset 0 1px 0 #f59e0b, inset 0 -1px 0 #f59e0b;
+}
+
 #pane-text {
     flex: 1 1 auto;
     min-height: 0;
@@ -381,7 +408,8 @@ button, input, select, textarea {
     background: #fee2e2;
 }
 
-.filter-toggle {
+.filter-toggle,
+.column-toggle {
     padding: 0.1rem 0.45rem;
     border: 1px solid #9ca3af;
     border-radius: 0.3rem;
@@ -392,7 +420,8 @@ button, input, select, textarea {
     line-height: 1.4;
 }
 
-.filter-toggle.active {
+.filter-toggle.active,
+.column-toggle.active {
     background: #1f2937;
     color: #fff;
     border-color: #1f2937;

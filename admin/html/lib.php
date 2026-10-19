@@ -64,7 +64,7 @@ function render_head(string $title, string $active): void
     $nav = ['index.php' => 'Tasks', 'descriptions.php' => 'Decisions', 'supervisors.php' => 'Supervisors'];
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
         . '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        . '<title>' . h($title) . ' - Admin</title><link rel="stylesheet" href="assets/style.css"></head><body>'
+        . '<title>' . h($title) . ' - Admin</title><link rel="stylesheet" href="assets/style.css?v=' . filemtime(__DIR__ . '/assets/style.css') . '"></head><body>'
         . '<header class="topbar"><div class="topbar-title"><span class="brand-mark small">AD</span> Admin</div><nav>';
     foreach ($nav as $href => $label) {
         echo '<a href="' . $href . '"' . ($href === $active ? ' class="active"' : '') . '>' . h($label) . '</a>';

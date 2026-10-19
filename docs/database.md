@@ -31,6 +31,7 @@ One row per student task-description version. The composite key `(neptun_code, v
 | `title_hu` | `Téma magyar címe`. |
 | `title_en` | `Téma angol címe`. |
 | `portal_status` | `Feladatkiírás státusza` on the university portal: `accepted` (`Tanszékvezető jóváhagyta`), `rejected` (`Konzulensi feltöltésre vár, mert a tanszékvezető elutasította`), `undecided` (`Feltöltve, tanszékvezetői jóváhagyásra vár`), or NULL if unavailable. |
+| `portal_status_date` | `Feladatkiírás jóváhagyás/elutasítás dátuma` from Excel (normalized `YYYY-MM-DD HH:MM:SS`), or NULL if unavailable. |
 
 ### `reviews`
 

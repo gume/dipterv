@@ -8,8 +8,6 @@ import argparse
 import sqlite3
 import sys
 
-from create_db import ensure_supervisor_schema
-
 DEFAULT_DATABASE = "/db/descriptions.sqlite"
 AI_MODEL_KEY = "supervisor_ai_model"
 
@@ -28,7 +26,6 @@ def ensure_tables(connection):
         );
         """
     )
-    ensure_supervisor_schema(connection)
 
 
 def list_supervisors(connection):

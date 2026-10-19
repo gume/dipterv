@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import datetime
 import glob
 import os
 import re
@@ -32,6 +33,7 @@ IMPORT_COLUMNS = (
     "title_hu",
     "title_en",
     "portal_status",
+    "portal_status_date",
 )
 # Initial entries of the reviewers table: (id, display name).
 HUMAN_REVIEWERS = (
@@ -83,6 +85,40 @@ def normalize_text(value):
     return text or None
 
 
+def parse_date(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value.replace(tzinfo=None) if value.tzinfo else value
+    if isinstance(value, datetime.date):
+        return datetime.datetime.combine(value, datetime.time.min)
+    if isinstance(value, str):
+        v = value.strip()
+        if not v:
+            return None
+        try:
+            dt = datetime.datetime.fromisoformat(v)
+            return dt.replace(tzinfo=None) if dt.tzinfo else dt
+        except ValueError:
+            return None
+    return None
+
+
+def normalize_date(value):
+    dt = parse_date(value)
+    return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else None
+
+
+def is_older_than_months(value, months=3, now=None):
+    dt = parse_date(value)
+    if dt is None:
+        return False
+    if now is None:
+        now = datetime.datetime.now()
+    cutoff = now - datetime.timedelta(days=30 * months)
+    return dt < cutoff
+
+
 def parse_version(filename):
     match = re.search(r"-(\d+)\.pdf$", filename or "", re.IGNORECASE)
     return int(match.group(1)) if match else None
@@ -104,6 +140,7 @@ def load_import_rows(workbook_path, data_dir="/data"):
         "Téma angol címe",
         "Feladatkiírás verziószáma",
         "Feladatkiírás státusza",
+        "Feladatkiírás jóváhagyás/elutasítás dátuma",
         "Téma oktatói szerkesztő oldalának címe (URL) a portálon",
     )
     missing_headers = [header for header in required_headers if header not in headers]
@@ -117,6 +154,10 @@ def load_import_rows(workbook_path, data_dir="/data"):
         row = {header: cells[index] if index < len(cells) else None for header, index in header_indexes.items()}
         raw_status = normalize_text(row["Feladatkiírás státusza"])
         if raw_status not in PORTAL_STATUS_MAP:
+            continue
+
+        raw_date = row.get("Feladatkiírás jóváhagyás/elutasítás dátuma")
+        if is_older_than_months(raw_date, months=3):
             continue
 
         neptun_code = normalize_text(row["Hallgató Neptun kódja"])
@@ -161,6 +202,7 @@ def load_import_rows(workbook_path, data_dir="/data"):
             "title_hu": normalize_text(row["Téma magyar címe"]),
             "title_en": normalize_text(row["Téma angol címe"]),
             "portal_status": PORTAL_STATUS_MAP.get(raw_status),
+            "portal_status_date": normalize_date(raw_date),
             "download_url": url,
             "should_download": raw_status
             == "Feltöltve, tanszékvezetői jóváhagyásra vár",
@@ -188,6 +230,7 @@ def ensure_schema(connection):
             title_hu TEXT,
             title_en TEXT,
             portal_status TEXT,
+            portal_status_date TEXT,
             UNIQUE (neptun_code, version)
         );
         CREATE TABLE IF NOT EXISTS "reviews" (
@@ -235,21 +278,7 @@ def ensure_schema(connection):
     connection.executemany(
         'INSERT OR IGNORE INTO "reviewers" (id, name) VALUES (?, ?)', HUMAN_REVIEWERS
     )
-    ensure_import_schema(connection)
     ensure_extract_schema(connection)
-    ensure_supervisor_schema(connection)
-
-
-def ensure_import_schema(connection):
-    columns = {row[1] for row in connection.execute('PRAGMA table_info("import")')}
-    if columns and "portal_status" not in columns:
-        connection.execute('ALTER TABLE "import" ADD COLUMN portal_status TEXT')
-
-
-def ensure_supervisor_schema(connection):
-    columns = {row[1] for row in connection.execute('PRAGMA table_info("supervisors")')}
-    if columns and "alt_name" not in columns:
-        connection.execute('ALTER TABLE "supervisors" ADD COLUMN alt_name TEXT')
 
 
 def load_supervisor_rows(workbook_path):

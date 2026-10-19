@@ -55,7 +55,7 @@ try {
         $row['is_latest'] = ((int)$row['version'] === ($maxVersions[$row['neptun_code']] ?? null)) ? 1 : 0;
         $ps = format_portal_status($row['portal_status'] ?? null);
         $row['portal_info'] = $ps;
-        $row['is_mismatch'] = ($ps === null || $row['status'] !== $ps['badge']) ? 1 : 0;
+        $row['is_mismatch'] = ($ps !== null && $row['status'] !== $ps['badge']) ? 1 : 0;
 
         $counts[$row['status']]++;
         if ($row['is_mismatch']) {
@@ -117,5 +117,5 @@ render_head('Decisions', 'descriptions.php');
         <p class="muted" id="empty" hidden>No descriptions in this list.</p>
     </section>
 </main>
-<script src="assets/decisions.js"></script>
+<script src="assets/decisions.js?v=<?= filemtime(__DIR__ . '/assets/decisions.js') ?>"></script>
 </body></html>

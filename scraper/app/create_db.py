@@ -11,10 +11,13 @@ from openpyxl import load_workbook
 
 
 DATABASE_PATH = "/db/descriptions.sqlite"
-PENDING_STATUSES = {
-    "Feltöltve, tanszékvezetői jóváhagyásra vár",
-    "Nincs beadva, mert a tanszékvezető nem hagyta jóvá",
+PORTAL_STATUS_MAP = {
+    "Feltöltve, tanszékvezetői jóváhagyásra vár": "undecided",
+    "Konzulensi feltöltésre vár, mert a tanszékvezető elutasította": "rejected",
+    "Tanszékvezető jóváhagyta": "accepted",
+    "Nincs beadva, mert a tanszékvezető nem hagyta jóvá": "rejected",
 }
+PENDING_STATUSES = set(PORTAL_STATUS_MAP)
 IMPORT_COLUMNS = (
     "neptun_code",
     "row_id",
@@ -28,6 +31,7 @@ IMPORT_COLUMNS = (
     "subject",
     "title_hu",
     "title_en",
+    "portal_status",
 )
 # Initial entries of the reviewers table: (id, display name).
 HUMAN_REVIEWERS = (
@@ -111,7 +115,8 @@ def load_import_rows(workbook_path, data_dir="/data"):
     records = []
     for row_id, cells in enumerate(sheet.iter_rows(min_row=5, values_only=True)):
         row = {header: cells[index] if index < len(cells) else None for header, index in header_indexes.items()}
-        if normalize_text(row["Feladatkiírás státusza"]) not in PENDING_STATUSES:
+        raw_status = normalize_text(row["Feladatkiírás státusza"])
+        if raw_status not in PORTAL_STATUS_MAP:
             continue
 
         neptun_code = normalize_text(row["Hallgató Neptun kódja"])
@@ -155,8 +160,9 @@ def load_import_rows(workbook_path, data_dir="/data"):
             "subject": normalize_text(row["Tantárgy"]),
             "title_hu": normalize_text(row["Téma magyar címe"]),
             "title_en": normalize_text(row["Téma angol címe"]),
+            "portal_status": PORTAL_STATUS_MAP.get(raw_status),
             "download_url": url,
-            "should_download": normalize_text(row["Feladatkiírás státusza"])
+            "should_download": raw_status
             == "Feltöltve, tanszékvezetői jóváhagyásra vár",
         })
 
@@ -181,6 +187,7 @@ def ensure_schema(connection):
             subject TEXT,
             title_hu TEXT,
             title_en TEXT,
+            portal_status TEXT,
             UNIQUE (neptun_code, version)
         );
         CREATE TABLE IF NOT EXISTS "reviews" (
@@ -228,8 +235,15 @@ def ensure_schema(connection):
     connection.executemany(
         'INSERT OR IGNORE INTO "reviewers" (id, name) VALUES (?, ?)', HUMAN_REVIEWERS
     )
+    ensure_import_schema(connection)
     ensure_extract_schema(connection)
     ensure_supervisor_schema(connection)
+
+
+def ensure_import_schema(connection):
+    columns = {row[1] for row in connection.execute('PRAGMA table_info("import")')}
+    if columns and "portal_status" not in columns:
+        connection.execute('ALTER TABLE "import" ADD COLUMN portal_status TEXT')
 
 
 def ensure_supervisor_schema(connection):
@@ -305,7 +319,7 @@ def sync_import_records(records, database_path=DATABASE_PATH):
         connection.commit()
         connection.execute("BEGIN")
         for record in records:
-            values = tuple(record[column] for column in IMPORT_COLUMNS)
+            values = tuple(record.get(column) for column in IMPORT_COLUMNS)
             current = connection.execute(
                 'SELECT * FROM "import" WHERE (neptun_code = ? AND version = ?) OR filename = ? '
                 'ORDER BY CASE WHEN neptun_code = ? AND version = ? THEN 0 ELSE 1 END LIMIT 1',

@@ -1,6 +1,8 @@
 <?php
 
 const DB_PATH = '/db/descriptions.sqlite';
+const EXCLUDED_SUBJECT = 'Diplomatervezés 2 (MSc)';
+
 
 // Write handlers must use open_db(true); SQLite serializes writers, busy_timeout makes them wait for each other.
 function open_db(bool $write = false): SQLite3

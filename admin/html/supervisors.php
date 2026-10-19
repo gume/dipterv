@@ -16,9 +16,10 @@ try {
                    SUM(CASE WHEN v.status = \'nogo\' THEN 1 ELSE 0 END) AS nogo
             FROM supervisors AS s
             LEFT JOIN "import" AS i ON i.supervisor_code = s.neptun_code
+                 AND (i.subject IS NULL OR TRIM(i.subject) != ?)
             LEFT JOIN review_verdict AS v ON v.neptun_code = i.neptun_code AND v.version = i.version
             GROUP BY s.neptun_code
-            ORDER BY COALESCE(NULLIF(s.alt_name, \'\'), s.name)');
+            ORDER BY COALESCE(NULLIF(s.alt_name, \'\'), s.name)', [EXCLUDED_SUBJECT]);
     }
 } catch (Throwable $e) {
     $error = 'The database is not available.';

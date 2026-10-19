@@ -11,7 +11,8 @@ try {
         SELECT COALESCE(v.status, \'undecided\') AS status, COUNT(*) AS n
         FROM "import" AS i
         LEFT JOIN review_verdict AS v ON v.neptun_code = i.neptun_code AND v.version = i.version
-        GROUP BY 1') as $r) {
+        WHERE (i.subject IS NULL OR TRIM(i.subject) != ?)
+        GROUP BY 1', [EXCLUDED_SUBJECT]) as $r) {
         $counts[in_array($r['status'], ['go', 'nogo'], true) ? $r['status'] : 'undecided'] += (int)$r['n'];
     }
     if (table_exists($db, 'supervisors')) {

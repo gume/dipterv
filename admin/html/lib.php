@@ -61,7 +61,12 @@ function require_admin(): void
 
 function render_head(string $title, string $active): void
 {
-    $nav = ['index.php' => 'Tasks', 'descriptions.php' => 'Decisions', 'supervisors.php' => 'Supervisors'];
+    $nav = [
+        'index.php' => 'Tasks',
+        'descriptions.php' => 'Decisions',
+        'supervisors.php' => 'Supervisors',
+        'statistics.php' => 'Statistics',
+    ];
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
         . '<meta name="viewport" content="width=device-width, initial-scale=1">'
         . '<title>' . h($title) . ' - Admin</title><link rel="stylesheet" href="assets/style.css?v=' . filemtime(__DIR__ . '/assets/style.css') . '"></head><body>'

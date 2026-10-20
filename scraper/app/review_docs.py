@@ -101,6 +101,32 @@ class BatchSummarySchema(BaseModel):
 	summaries: list[DocumentSummary]
 
 
+class BlindFitSchema(BaseModel):
+	fit_score_bprof: int
+	reasoning_bprof: str
+	fit_score_bsc: int
+	reasoning_bsc: str
+	fit_score_msc: int
+	reasoning_msc: str
+
+
+class DocumentBlindFit(BaseModel):
+	document: str
+	fit_score_bprof: int
+	reasoning_bprof: str
+	fit_score_bsc: int
+	reasoning_bsc: str
+	fit_score_msc: int
+	reasoning_msc: str
+
+
+class BatchBlindFitSchema(BaseModel):
+	documents: list[DocumentBlindFit]
+
+
+BLIND_FIT_ASPECTS = ("fit_score_bprof", "fit_score_bsc", "fit_score_msc")
+
+
 def positive_int(value):
 	try:
 		parsed = int(value)
@@ -322,6 +348,50 @@ def request_summary(client, config, model, scores):
 	return average_score, f"Average {average_score:.2f}/5. {summary}"
 
 
+def build_blind_fit_prompt(config, body):
+	prompt_text = config.get("blind_fit", {}).get("prompt", "")
+	reasoning_language = config["review"].get("reasoning_language", "the language of the document")
+	return (
+		f"{prompt_text}\n\n"
+		f"Write the reasonings in: {reasoning_language}.\n\n"
+		f"Document text:\n<<<\n{body}\n>>>"
+	)
+
+
+def build_batch_blind_fit_prompt(config, rows_by_id):
+	prompt_text = config.get("blind_fit", {}).get("prompt", "")
+	reasoning_language = config["review"].get("reasoning_language", "the language of the document")
+	documents = "\n\n".join(
+		f"=== DOCUMENT {doc_id} ===\n<<<\n{document_body(row)}\n>>>"
+		for doc_id, row in rows_by_id.items()
+	)
+	return (
+		f"Below are {len(rows_by_id)} unrelated thesis descriptions.\n"
+		f"{prompt_text}\n\n"
+		f"Write the reasonings in: {reasoning_language}.\n\n"
+		"Return exactly one entry per document id (" + ", ".join(rows_by_id) + ").\n\n"
+		f"{documents}"
+	)
+
+
+def request_blind_fit(client, config, model, body):
+	system_prompt = config.get("blind_fit", {}).get(
+		"system_prompt",
+		"You evaluate thesis descriptions purely on their technical depth, engineering scope, and complexity for BME VIK. Return only the requested JSON.",
+	)
+	return request_structured(
+		client, config, model, build_blind_fit_prompt(config, body), BlindFitSchema, system_prompt
+	)
+
+
+def validated_fit_scores(fit_result):
+	return [
+		("fit_score_bprof", max(0, min(100, int(fit_result.fit_score_bprof))), fit_result.reasoning_bprof.strip()),
+		("fit_score_bsc", max(0, min(100, int(fit_result.fit_score_bsc))), fit_result.reasoning_bsc.strip()),
+		("fit_score_msc", max(0, min(100, int(fit_result.fit_score_msc))), fit_result.reasoning_msc.strip()),
+	]
+
+
 def batch_ids(rows):
 	return {f"D{number}": row for number, row in enumerate(rows, 1)}
 
@@ -364,7 +434,7 @@ def build_batch_summary_prompt(config, items):
 
 
 def review_batch(client, config, model, summary_model, rows):
-	"""Reviews several documents in one request; returns [(row, (scores, average, summary) | Exception)]."""
+	"""Reviews several documents in one request; returns [(row, (scores, average, summary, fit_scores) | Exception)]."""
 	rows_by_id = batch_ids(rows)
 	try:
 		review = request_structured(
@@ -388,6 +458,26 @@ def review_batch(client, config, model, summary_model, rows):
 			outcome[doc_id] = error
 
 	if valid:
+		blind_fit_enabled = config.get("blind_fit", {}).get("enabled", True)
+		fit_by_id = {}
+		if blind_fit_enabled:
+			try:
+				system_prompt = config.get("blind_fit", {}).get(
+					"system_prompt",
+					"You evaluate thesis descriptions purely on their technical depth, engineering scope, and complexity for BME VIK. Return only the requested JSON.",
+				)
+				fit_batch = request_structured(
+					client, config, model,
+					build_batch_blind_fit_prompt(config, {d: rows_by_id[d] for d in valid}),
+					BatchBlindFitSchema,
+					system_prompt,
+				)
+				for item in fit_batch.documents:
+					fit_by_id[item.document.strip().upper()] = validated_fit_scores(item)
+			except Exception as error:
+				for doc_id in valid:
+					outcome[doc_id] = error
+
 		try:
 			summaries = request_structured(
 				client, config, summary_model,
@@ -400,12 +490,14 @@ def review_batch(client, config, model, summary_model, rows):
 			summary_by_id = {}
 			for doc_id in valid:
 				outcome[doc_id] = error
+
 		for doc_id, (scores, average_score) in valid.items():
 			if doc_id in outcome:
 				continue
 			summary = summary_by_id.get(doc_id)
+			fit_scores = fit_by_id.get(doc_id, [])
 			if summary:
-				outcome[doc_id] = (scores, average_score, f"Average {average_score:.2f}/5. {summary}")
+				outcome[doc_id] = (scores, average_score, f"Average {average_score:.2f}/5. {summary}", fit_scores)
 			else:
 				outcome[doc_id] = ValueError(f"No summary for document {doc_id} in the batch answer.")
 	return [(row, outcome[doc_id]) for doc_id, row in rows_by_id.items()]
@@ -417,13 +509,22 @@ def review_single(client, config, model, summary_model, row):
 		review = request_review(client, config, model, build_prompt(config, row, body))
 		scores = validated_scores(config, review)
 		average_score, summary = request_summary(client, config, summary_model, scores)
-		return row, (scores, average_score, summary)
+
+		fit_scores = []
+		if config.get("blind_fit", {}).get("enabled", True):
+			fit_result = request_blind_fit(client, config, model, body)
+			fit_scores = validated_fit_scores(fit_result)
+
+		return row, (scores, average_score, summary, fit_scores)
 	except Exception as error:
 		return row, error
 
 
-def store_review(connection, row, reviewer, scores, average_score, summary):
+def store_review(connection, row, reviewer, scores, average_score, summary, fit_scores=None):
 	key = (row["neptun_code"], row["version"], reviewer)
+	all_aspects = list(scores)
+	if fit_scores:
+		all_aspects.extend(fit_scores)
 	with connection:
 		connection.execute(
 			"DELETE FROM reviews WHERE neptun_code = ? AND version = ? AND reviewer = ?", key
@@ -431,7 +532,7 @@ def store_review(connection, row, reviewer, scores, average_score, summary):
 		connection.executemany(
 			"INSERT INTO reviews (neptun_code, version, reviewer, aspect, result, score) "
 			"VALUES (?, ?, ?, ?, ?, ?)",
-			[(*key, aspect, reasoning, score) for aspect, score, reasoning in scores],
+			[(*key, aspect, reasoning, score) for aspect, score, reasoning in all_aspects],
 		)
 		connection.execute(
 			"INSERT OR REPLACE INTO review_summaries "
@@ -480,7 +581,11 @@ def main(argv=None):
 	connection.row_factory = sqlite3.Row
 	ensure_schema(connection)
 	aspects = [aspect["key"] for aspect in config["review"]["aspects"]]
-	rows = pending_documents(connection, model, aspects, args.limit, args.filename)
+	blind_fit_enabled = config.get("blind_fit", {}).get("enabled", True)
+	required_aspects = list(aspects)
+	if blind_fit_enabled:
+		required_aspects.extend(BLIND_FIT_ASPECTS)
+	rows = pending_documents(connection, model, required_aspects, args.limit, args.filename)
 	if not rows:
 		print("No descriptions need review.")
 		connection.close()
@@ -507,17 +612,25 @@ def main(argv=None):
 				failures += 1
 				print(f"ERROR: Review failed for {row['filename']}: {outcome}", file=sys.stderr)
 				continue
-			scores, average_score, summary = outcome
+			if len(outcome) == 4:
+				scores, average_score, summary, fit_scores = outcome
+			else:
+				scores, average_score, summary = outcome
+				fit_scores = None
 			try:
-				store_review(connection, row, model, scores, average_score, summary)
+				store_review(connection, row, model, scores, average_score, summary, fit_scores)
 			except Exception as error:
 				failures += 1
 				print(f"ERROR: Review failed for {row['filename']}: {error}", file=sys.stderr)
 				continue
 			stored += 1
+			fit_info = ""
+			if fit_scores:
+				fit_info = "; " + ", ".join(f"{k}={s}%" for k, s, _ in fit_scores)
 			print(
 				f"Stored {row['filename']}: average={average_score:.2f}, "
 				+ ", ".join(f"{key}={score}" for key, score, _ in scores)
+				+ fit_info
 			)
 
 	connection.close()

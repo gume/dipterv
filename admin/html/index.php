@@ -42,6 +42,11 @@ render_head('Tasks', 'index.php');
             <p>The supervisors known to the system and their descriptions.</p>
             <div class="tile-stats"><span class="badge neutral"><?= $supervisors ?> supervisors</span></div>
         </a>
+        <a class="tile" href="statistics.php">
+            <h2>Statistics & Insights</h2>
+            <p>Top 5 department topics, metric distribution histograms, and fun facts.</p>
+            <div class="tile-stats"><span class="badge neutral">View analytics</span></div>
+        </a>
     </div>
 </main>
 </body></html>

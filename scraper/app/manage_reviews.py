@@ -15,7 +15,8 @@ def list_reviewers(connection):
 	known = {row[0] for row in connection.execute("SELECT id FROM reviewers")}
 	stats = {}
 	for row in connection.execute(
-		"SELECT reviewer, COUNT(*) AS rows_, COUNT(DISTINCT neptun_code || '|' || version) AS docs, AVG(score) "
+		"SELECT reviewer, COUNT(*) AS rows_, COUNT(DISTINCT neptun_code || '|' || version) AS docs, "
+		"AVG(CASE WHEN aspect NOT LIKE 'fit_score_%' THEN score END) "
 		"FROM reviews GROUP BY reviewer"
 	):
 		stats[row[0]] = {"rows": row[1], "docs": row[2], "avg": row[3], "summaries": 0}

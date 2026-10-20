@@ -44,7 +44,7 @@ foreach (fetch_all($db, 'SELECT neptun_code, version, reviewer, aspect, result, 
         if ($r['score'] !== null) {
             $docs[$i]['remark_scores'][$r['reviewer']] = (int)$r['score'];
         }
-    } else {
+    } elseif (!str_starts_with($r['aspect'], 'fit_score_') && $r['aspect'] !== 'structure_conformance') {
         if (!isset($docs[$i]['ai'][$r['reviewer']])) {
             $docs[$i]['ai'][$r['reviewer']] = [
                 'average_score' => null,

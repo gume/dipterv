@@ -73,6 +73,11 @@ EXTRACT_COLUMNS = {
     "department_logo_box_2d_json": "TEXT",
     "signature_space_present": "INTEGER",
     "signature_space_box_2d_json": "TEXT",
+    "keyword1": "TEXT",
+    "keyword2": "TEXT",
+    "keyword3": "TEXT",
+    "keyword4": "TEXT",
+    "keyword5": "TEXT",
 }
 
 
@@ -272,6 +277,34 @@ def ensure_schema(connection):
         CREATE TABLE IF NOT EXISTS "settings" (
             key TEXT PRIMARY KEY NOT NULL,
             value TEXT
+        );
+        CREATE TABLE IF NOT EXISTS "description_topics" (
+            rank INTEGER PRIMARY KEY NOT NULL,
+            topic_name TEXT NOT NULL,
+            topic_description TEXT,
+            thesis_count INTEGER NOT NULL,
+            percentage REAL NOT NULL,
+            top_keywords_json TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS "description_metric_distributions" (
+            metric_key TEXT PRIMARY KEY NOT NULL,
+            metric_label TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            average_value REAL NOT NULL,
+            min_value REAL,
+            max_value REAL,
+            total_samples INTEGER NOT NULL,
+            histogram_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS "description_fun_facts" (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            fact_text TEXT NOT NULL,
+            highlight_stat TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         """
     )

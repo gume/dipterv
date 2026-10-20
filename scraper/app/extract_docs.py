@@ -57,6 +57,10 @@ class ThesisAssignmentSchema(BaseModel):
 	department_head: str
 	issue_date: str
 	visual_elements: list[VisualElement]
+	keywords: list[str] = Field(
+		default_factory=list,
+		description="Up to 5 most relevant keywords or technical core concepts in strict order of relevance (index 0 is most relevant, index 4 is 5th most relevant). Max 5 items; leave fewer or empty if fewer apply.",
+	)
 
 
 def positive_int(value):
@@ -113,7 +117,7 @@ def parse_args(argv=None):
 		"--limit",
 		type=nonnegative_int,
 		default=None,
-		help="Maximum number of pending PDF files to send for extraction; existing extract rows do not count.",
+		help="Maximum number of pending or incomplete PDF files to send for extraction; completely extracted rows do not count.",
 	)
 	parser.add_argument(
 		"--reload",
@@ -146,9 +150,41 @@ def load_templates(templates_dir):
 	return templates
 
 
+# Columns that a complete extraction always fills with a value. Columns that may
+# legitimately stay NULL after a successful extraction (unmatched boilerplate,
+# cosupervisor, visual boxes, keyword2-5) are deliberately not listed, so they do
+# not trigger endless re-extraction. Extend this list when a new required feature
+# is added; existing rows that lack it are then extracted again.
+REQUIRED_EXTRACT_COLUMNS = (
+	"template_status",
+	"page_count",
+	"detected_template",
+	"missing_boilerplate_rules_json",
+	"layout_discrepancies_json",
+	"student_name",
+	"student_status",
+	"thesis_title",
+	"problem_background",
+	"project_goal",
+	"tasks_json",
+	"supervisor",
+	"department_head",
+	"issue_date",
+	"university_logo_present",
+	"department_logo_present",
+	"signature_space_present",
+	"keyword1",
+)
+
+
 def pending_filenames(connection, template_ids):
-	# Rows with problems are rechecked only when their template version changed.
+	# A row is pending when it was never extracted, is incomplete (a required
+	# feature is still NULL even though other data exists), or had problems and
+	# was extracted with an older template version.
 	placeholders = ", ".join("?" for _ in template_ids)
+	incomplete = " OR ".join(
+		f'e."{column}" IS NULL' for column in REQUIRED_EXTRACT_COLUMNS
+	)
 	return [
 		row[0]
 		for row in connection.execute(
@@ -157,6 +193,7 @@ def pending_filenames(connection, template_ids):
 			FROM "import" AS i
 			LEFT JOIN "extract" AS e ON e.filename = i.filename
 			WHERE e.filename IS NULL
+			   OR {incomplete}
 			   OR (e.template_status > 0
 			       AND (e.detected_template IS NULL
 			            OR e.detected_template NOT IN ({placeholders})))
@@ -197,6 +234,9 @@ Instructions:
 4. Extract the student name/status, thesis title, background, goal, task list, supervisor(s), department head, and issue date. Use an empty string for unavailable text; use null only for the optional cosupervisor.
 5. For each visual_elements_to_detect item in the selected template, return its element_type, whether it is present in the expected area, and its box_2d [ymin, xmin, ymax, xmax] normalized to 0-1000. Use null for box_2d when unavailable. Do not crop, encode, return, or save image data.
 6. Report every unmatched rule and layout discrepancy accurately; the template status is computed from them afterwards.
+7. Extract up to 5 most relevant keywords or technical core concepts in strict descending order of relevance (keywords[0] is the most relevant, keywords[4] is the 5th most relevant). If there are fewer than 5 relevant keywords, provide fewer. Use concise domain/technical terms (e.g. 'Kubernetes', 'LLM', 'Reinforcement Learning', 'Time Series Analysis', 'Computer Vision').
+
+
 
 """
 
@@ -325,6 +365,11 @@ def result_database_values(result, page_count=None):
 		"department_logo_box_2d_json": json.dumps(visual_elements["department_logo"].box_2d) if visual_elements.get("department_logo") and visual_elements["department_logo"].box_2d else None,
 		"signature_space_present": int(visual_elements["signature_space"].is_present) if "signature_space" in visual_elements else None,
 		"signature_space_box_2d_json": json.dumps(visual_elements["signature_space"].box_2d) if visual_elements.get("signature_space") and visual_elements["signature_space"].box_2d else None,
+		"keyword1": (result.keywords[0].strip() if len(result.keywords) > 0 and result.keywords[0] and result.keywords[0].strip() else None),
+		"keyword2": (result.keywords[1].strip() if len(result.keywords) > 1 and result.keywords[1] and result.keywords[1].strip() else None),
+		"keyword3": (result.keywords[2].strip() if len(result.keywords) > 2 and result.keywords[2] and result.keywords[2].strip() else None),
+		"keyword4": (result.keywords[3].strip() if len(result.keywords) > 3 and result.keywords[3] and result.keywords[3].strip() else None),
+		"keyword5": (result.keywords[4].strip() if len(result.keywords) > 4 and result.keywords[4] and result.keywords[4].strip() else None),
 	}
 
 
@@ -337,6 +382,15 @@ def store_result(connection, filename, values):
 		(filename, *values.values()),
 	)
 	connection.commit()
+
+
+def extract_row_exists(connection, filename):
+	return (
+		connection.execute(
+			'SELECT 1 FROM "extract" WHERE filename = ?', (filename,)
+		).fetchone()
+		is not None
+	)
 
 
 def merge_result(connection, filename, values):
@@ -451,7 +505,7 @@ def main(argv=None):
 			result = extract_pdf(client, str(pdf_path), args.model, prompt)
 			page_count = count_pages(str(pdf_path))
 			values = result_database_values(result, page_count)
-			if args.reload is not None:
+			if args.reload is not None or extract_row_exists(connection, filename):
 				merge_result(connection, filename, values)
 			else:
 				store_result(connection, filename, values)

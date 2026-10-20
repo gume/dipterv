@@ -58,7 +58,8 @@ The model comes from `--model`, or `llm.model` in the config if omitted, so pass
 | `llm.model`, `llm.temperature`, `llm.timeout`, `llm.retries` | Model settings; failed requests are retried with backoff (60 s on rate limiting). |
 | `review.reasoning_language` | Language requested for the reasoning. |
 | `review.system_prompt` | Strict shared 1-5 scoring anchors, evidence requirements and reviewer instructions. |
-| `[[review.aspects]]` | `key` and `prompt` of each reviewed aspect. The current rubric covers goal clarity, task specificity (including ambiguity), scope feasibility, strict language accuracy, degree appropriateness, and AI promptability. |
+| `[[review.aspects]]` | `key` and `prompt` of each reviewed aspect. The current rubric covers goal clarity, task specificity (including ambiguity), scope feasibility, strict language accuracy, degree appropriateness, AI promptability, and canonical structure conformance. |
+| `[blind_fit]` | Configuration for blind degree fitting (evaluating technical depth for BProf, BSc, and MSc on 0–100% scale without revealing the student's nominal degree). |
 
 ## Functions
 

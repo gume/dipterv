@@ -31,3 +31,20 @@ prompt = "Does the intellectual contribution match the stated degree? For BSc/BP
 [[review.aspects]]
 key = "ai_promptability"
 prompt = "Could the central deliverable be completed adequately by giving a general-purpose AI assistant one ordinary prompt, without substantial independent engineering, domain-specific integration, data collection, experimentation, validation, or defensible analysis? Score 1 if yes or if the description offers no meaningful work beyond prompt-based generation; 3 if there is some substantive work but the AI-replaceable part is large; 5 only if the central work clearly requires substantial independent, verifiable effort. For MSc, also require genuine investigation/critical analysis rather than merely asking AI to summarize or implement. Do not penalize appropriate use of AI as a tool. Explain what work is or is not AI-replaceable from the text."
+
+[[review.aspects]]
+key = "structure_conformance"
+prompt = "Evaluate how well the task list follows the canonical 5-phase engineering thesis workflow: 1. Literature study / State of the art review; 2. Design / Architectural specification phase; 3. Implementation / Development phase; 4. Verification / Measurements / Testing / Evaluation phase; 5. Documentation / Thesis summary. Score 1 = completely lacks structure or is an ad-hoc collection of tasks with no recognizable phases; 2 = partial structure, major phases missing (e.g. no literature review or no testing/measurements); 3 = recognizable basic flow but phases are jumbled, combined, or poorly defined; 4 = good adherence, covers the canonical phases with only minor omission or ordering flaw; 5 = exemplary adherence, clearly delineates all 5 phases in proper sequence with clear boundaries."
+
+[blind_fit]
+enabled = true
+system_prompt = """You are an expert engineering education evaluator for the Faculty of Electrical Engineering and Informatics at Budapest University of Technology and Economics (BME VIK). You evaluate thesis descriptions purely on their technical depth, engineering scope, and complexity WITHOUT knowing or searching for any nominal degree level (BProf, BSc, MSc). Reply with one JSON object only."""
+prompt = """Perform a BLIND evaluation of the thesis description text below to estimate its degree level fit for BME VIK.
+DO NOT assume or search for any pre-existing degree label; evaluate the technical depth, scope, complexity, and engineering demands purely on their own merits.
+
+Estimate an independent fit score from 0% to 100% for each of the three degree levels (each score is an independent estimate from 0 to 100):
+- fit_score_bprof: 0-100% for BProf (practice-oriented Computer Science Operational Engineering: focuses on technology application, hands-on implementation, tool integration, and practical software engineering).
+- fit_score_bsc: 0-100% for BSc (Bachelor of Science: focuses on comprehensive engineering design, independent implementation, testing, and standard engineering problem solving).
+- fit_score_msc: 0-100% for MSc (Master of Science: focuses on deep investigation, advanced algorithmic/scientific complexity, state-of-the-art literature synthesis, research questions, comparative benchmarking, and critical evaluation).
+
+Return exactly one result for each of: fit_score_bprof, fit_score_bsc, fit_score_msc, each with an integer score from 0 to 100 and concise, specific reasoning."""

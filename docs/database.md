@@ -95,6 +95,7 @@ One row per extracted PDF, keyed by `filename`. `template_status` stores the tem
 | `university_logo_present`, `department_logo_present`, `signature_space_present` | Nullable integer booleans for template visual elements. |
 | `university_logo_box_2d_json`, `department_logo_box_2d_json`, `signature_space_box_2d_json` | Nullable JSON arrays `[ymin, xmin, ymax, xmax]`, normalized to 0-1000, for each visual element. No image crops or image files are stored. |
 | `keyword1`, `keyword2`, `keyword3`, `keyword4`, `keyword5` | 5 most relevant keywords ordered by relevance, extracted from the assignment text (NULL if fewer than 5). |
+| `telco_score`, `ai_score`, `other_score` | LLM-judged 0-100 scores for how much the description is telecommunication, AI, or other; their sum is 100. |
 
 ### `description_topics`
 

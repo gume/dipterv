@@ -24,6 +24,7 @@
 - `missing_boilerplate_rules_json`, `layout_discrepancies_json`: JSON lists.
 - Content: `student_name`, `student_status`, `thesis_title`, `problem_background`, `project_goal`, `tasks_json`, supervisors, `department_head`, `issue_date`.
 - Visual elements (`university_logo`, `department_logo`, `signature_space`): presence flag and a `[ymin, xmin, ymax, xmax]` box normalized to 0-1000. No image data is stored.
+- Domain composition scores (`telco_score`, `ai_score`, `other_score`): LLM-judged 0-100 scores for how much the description is telecommunication, AI, or other; their sum is 100.
 
 ## Usage
 
@@ -44,6 +45,7 @@ docker compose run --rm -e GEMINI_API_KEY playwright-runner \
 | `--templates-dir PATH` | `scraper/app/templates` | Template JSON directory. |
 | `--reload [FILENAME]` | off | Re-extract and recheck all descriptions (or only FILENAME) regardless of existing rows. Missing values are added; changed values are overwritten with a warning. `--limit` still applies. |
 | `--json` | off | Print each extracted result as JSON. |
+| `--openai` | off | Use an OpenAI-compatible API instead of Google; needs `OPENAI_API_KEY` and `OPENAI_BASE_URL`. |
 
 Exit code is 1 if any extraction failed. Failed files are not stored and stay pending.
 

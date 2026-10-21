@@ -180,7 +180,7 @@ render_head('Statistics', 'statistics.php');
                 <?php foreach ($metrics as $m):
                     $avg = (float)$m['average_value'];
                     $samples = (int)$m['total_samples'];
-                    $isScore100 = str_contains($m['metric_key'], 'fit_score_') || str_ends_with($m['metric_key'], '_fit');
+                    $isScore100 = str_contains($m['metric_key'], 'fit_score_') || str_ends_with($m['metric_key'], '_fit') || in_array($m['metric_key'], ['telco_score', 'ai_score', 'other_score'], true);
                     $isVersionCount = $m['metric_key'] === 'version_count';
                     $scale = $isVersionCount ? 'versions / thesis' : ($isScore100 ? '/ 100%' : '/ 5.0');
                     $histogram = json_decode($m['histogram_json'] ?? '[]', true) ?: [];

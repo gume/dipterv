@@ -336,10 +336,41 @@ def compute_all_metrics(conn):
         version_dist["model"] = ""
         distributions.append(version_dist)
 
+    # 0b. Domain composition scores (telecommunication / AI / other), extracted per description.
+    domain_rows = conn.execute(
+        """
+        SELECT e.telco_score, e.ai_score, e.other_score
+        FROM "extract" AS e
+        JOIN "import" AS i ON i.filename = e.filename
+        JOIN (
+            SELECT neptun_code, MAX(version) AS version
+            FROM "import"
+            GROUP BY neptun_code
+        ) AS latest ON latest.neptun_code = i.neptun_code AND latest.version = i.version
+        WHERE (e.telco_score IS NOT NULL OR e.ai_score IS NOT NULL OR e.other_score IS NOT NULL)
+          AND (i.subject IS NULL OR TRIM(i.subject) != ?)
+        """,
+        (EXCLUDED_SUBJECT,),
+    ).fetchall()
+
+    domain_metric_defs = [
+        ("telco_score", "Telecommunication Score (0-100%)"),
+        ("ai_score", "Artificial Intelligence Score (0-100%)"),
+        ("other_score", "Other Domains Score (0-100%)"),
+    ]
+    domain_averages = {}
+    for key, label in domain_metric_defs:
+        scores = [int(r[key]) for r in domain_rows if r[key] is not None]
+        dist = calculate_distribution_percentage(scores, label, key, "extract")
+        if dist:
+            dist["model"] = ""
+            distributions.append(dist)
+            domain_averages[key] = dist["average_value"]
+
     # 1. Review aspect scores, computed separately for every AI model.
     aspect_rows = conn.execute(
         """
-        SELECT r.reviewer, r.aspect, r.score
+        SELECT r.reviewer, r.aspect, r.score, i.degree
         FROM reviews AS r
         JOIN "import" AS i ON i.neptun_code = r.neptun_code AND i.version = r.version
         JOIN (
@@ -354,9 +385,18 @@ def compute_all_metrics(conn):
         (EXCLUDED_SUBJECT,),
     ).fetchall()
 
+    FIT_DEGREE_BY_ASPECT = {
+        "fit_score_bprof": "BProf",
+        "fit_score_bsc": "BSc",
+        "fit_score_msc": "MSc",
+    }
     scores_by_model = collections.defaultdict(lambda: collections.defaultdict(list))
     for r in aspect_rows:
-        scores_by_model[r["reviewer"]][r["aspect"]].append(int(r["score"]))
+        aspect = r["aspect"]
+        # In statistics, a fit score counts only for descriptions of its own degree level.
+        if aspect in FIT_DEGREE_BY_ASPECT and r["degree"] != FIT_DEGREE_BY_ASPECT[aspect]:
+            continue
+        scores_by_model[r["reviewer"]][aspect].append(int(r["score"]))
 
     preferred_order = list(ASPECT_LABELS_1_TO_5) + list(FIT_LABELS)
     for model in sorted(scores_by_model):
@@ -504,6 +544,33 @@ def generate_fun_facts(conn, theses, keyword_counts, distributions):
         "fact_text": f"The department currently manages {len(theses)} active bachelor and master thesis descriptions across multiple specializations.",
         "highlight_stat": f"{len(theses)} active theses",
     })
+
+    # 7. Domain composition overall (telecommunication / AI / other)
+    domain_row = conn.execute(
+        """
+        SELECT AVG(e.telco_score) AS telco_avg, AVG(e.ai_score) AS ai_avg, AVG(e.other_score) AS other_avg, COUNT(*) AS n
+        FROM "extract" AS e
+        JOIN "import" AS i ON i.filename = e.filename
+        JOIN (
+            SELECT neptun_code, MAX(version) AS version
+            FROM "import"
+            GROUP BY neptun_code
+        ) AS latest ON latest.neptun_code = i.neptun_code AND latest.version = i.version
+        WHERE (e.telco_score IS NOT NULL OR e.ai_score IS NOT NULL OR e.other_score IS NOT NULL)
+          AND (i.subject IS NULL OR TRIM(i.subject) != ?)
+        """,
+        (EXCLUDED_SUBJECT,),
+    ).fetchone()
+    if domain_row and domain_row["n"]:
+        telco_avg = round(domain_row["telco_avg"] or 0, 1)
+        ai_avg = round(domain_row["ai_avg"] or 0, 1)
+        other_avg = round(domain_row["other_avg"] or 0, 1)
+        facts.append({
+            "category": "topics",
+            "title": "Department Domain Composition",
+            "fact_text": f"Across {domain_row['n']} thesis descriptions, the average domain composition is {telco_avg}% telecommunication, {ai_avg}% artificial intelligence, and {other_avg}% other.",
+            "highlight_stat": f"Telco {telco_avg}% / AI {ai_avg}% / Other {other_avg}%",
+        })
 
     # 7. Revision activity: versions per latest thesis
     version_counts = collect_version_counts(conn)

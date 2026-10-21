@@ -8,6 +8,7 @@ import re
 import sqlite3
 import sys
 import time
+import base64
 from pathlib import Path
 
 import pymupdf
@@ -22,6 +23,8 @@ APP_DIR = Path(__file__).resolve().parent
 DEFAULT_DATABASE = "/db/descriptions.sqlite"
 DEFAULT_DATA_DIR = "/data"
 DEFAULT_TEMPLATES_DIR = APP_DIR / "templates"
+OPENAI_ENV_KEY = "OPENAI_API_KEY"
+OPENAI_ENV_URL = "OPENAI_BASE_URL"
 
 
 class VisualElement(BaseModel):
@@ -61,6 +64,71 @@ class ThesisAssignmentSchema(BaseModel):
 		default_factory=list,
 		description="Up to 5 most relevant keywords or technical core concepts in strict order of relevance (index 0 is most relevant, index 4 is 5th most relevant). Max 5 items; leave fewer or empty if fewer apply.",
 	)
+	telco_score: int = Field(
+		description="0-100 score for how much the description is about telecommunication; telco_score + ai_score + other_score must equal 100."
+	)
+	ai_score: int = Field(
+		description="0-100 score for how much the description is about artificial intelligence; telco_score + ai_score + other_score must equal 100."
+	)
+	other_score: int = Field(
+		description="0-100 score for how much the description is about other domains; telco_score + ai_score + other_score must equal 100."
+	)
+
+
+class OpenAIExtractClient:
+	"""Chat-completions transport for OpenAI-compatible servers; renders PDF pages as images."""
+
+	def __init__(self, api_key, base_url, timeout):
+		from openai import OpenAI
+
+		self._client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
+		self._no_temperature = set()
+
+	@staticmethod
+	def _rejects_temperature(error):
+		param = getattr(error, "param", None) or (getattr(error, "body", None) or {}).get("param")
+		return getattr(error, "status_code", None) == 400 and (
+			param == "temperature" or "'temperature'" in str(error)
+		)
+
+	def _pdf_images(self, pdf_path):
+		images = []
+		with pymupdf.open(pdf_path) as document:
+			for page in document:
+				pixmap = page.get_pixmap(dpi=150)
+				encoded = base64.b64encode(pixmap.tobytes("png")).decode("ascii")
+				images.append(f"data:image/png;base64,{encoded}")
+		return images
+
+	def generate_text(self, model, pdf_path, prompt, response_schema, temperature):
+		schema = json.dumps(response_schema.model_json_schema(), ensure_ascii=False)
+		content = [{"type": "text", "text": prompt}]
+		for image_url in self._pdf_images(pdf_path):
+			content.append({"type": "image_url", "image_url": {"url": image_url}})
+		messages = [
+			{
+				"role": "system",
+				"content": (
+					"You extract structured data from thesis-assignment PDFs. "
+					"Return only one JSON object conforming to this JSON schema:\n" + schema
+				),
+			},
+			{"role": "user", "content": content},
+		]
+		request = {"model": model, "response_format": {"type": "json_object"}, "messages": messages}
+		if model not in self._no_temperature:
+			request["temperature"] = temperature
+		try:
+			response = self._client.chat.completions.create(**request)
+		except Exception as error:
+			if "temperature" not in request or not self._rejects_temperature(error):
+				raise
+			print(f"NOTE: {model} does not accept temperature={temperature}; using its default.", file=sys.stderr)
+			self._no_temperature.add(model)
+			del request["temperature"]
+			response = self._client.chat.completions.create(**request)
+		text = (response.choices[0].message.content or "").strip()
+		return re.sub(r"^```(?:json)?\s*|\s*```$", "", text)
 
 
 def positive_int(value):
@@ -133,6 +201,11 @@ def parse_args(argv=None):
 		action="store_true",
 		help="Print each successfully extracted result as JSON.",
 	)
+	parser.add_argument(
+		"--openai",
+		action="store_true",
+		help=f"Use an OpenAI-compatible API instead of Google; needs {OPENAI_ENV_KEY} and {OPENAI_ENV_URL}; the model is taken from --model.",
+	)
 	return parser.parse_args(argv)
 
 
@@ -174,6 +247,9 @@ REQUIRED_EXTRACT_COLUMNS = (
 	"department_logo_present",
 	"signature_space_present",
 	"keyword1",
+	"telco_score",
+	"ai_score",
+	"other_score",
 )
 
 
@@ -235,6 +311,7 @@ Instructions:
 5. For each visual_elements_to_detect item in the selected template, return its element_type, whether it is present in the expected area, and its box_2d [ymin, xmin, ymax, xmax] normalized to 0-1000. Use null for box_2d when unavailable. Do not crop, encode, return, or save image data.
 6. Report every unmatched rule and layout discrepancy accurately; the template status is computed from them afterwards.
 7. Extract up to 5 most relevant keywords or technical core concepts in strict descending order of relevance (keywords[0] is the most relevant, keywords[4] is the 5th most relevant). If there are fewer than 5 relevant keywords, provide fewer. Use concise domain/technical terms (e.g. 'Kubernetes', 'LLM', 'Reinforcement Learning', 'Time Series Analysis', 'Computer Vision').
+8. Judge how much of the description belongs to telecommunication, artificial intelligence, and other domains. Provide `telco_score`, `ai_score`, and `other_score` as integers on a 0-100 scale; their sum must be exactly 100.
 
 
 
@@ -263,25 +340,34 @@ def is_resource_exhausted_429(error):
 
 
 def extract_pdf(client, pdf_path, model, prompt):
-	pdf_part = make_pdf_part(pdf_path, model)
-	request = {
-		"model": model,
-		"contents": [pdf_part, prompt],
-		"config": types.GenerateContentConfig(
-			temperature=0.0,
-			response_mime_type="application/json",
-			response_schema=ThesisAssignmentSchema,
-		),
-	}
-	try:
-		response = client.models.generate_content(**request)
-	except Exception as error:
-		if not is_resource_exhausted_429(error):
+	raw_text = None
+	for attempt in range(2):
+		try:
+			if isinstance(client, OpenAIExtractClient):
+				raw_text = client.generate_text(model, pdf_path, prompt, ThesisAssignmentSchema, 0.0)
+			else:
+				pdf_part = make_pdf_part(pdf_path, model)
+				request = {
+					"model": model,
+					"contents": [pdf_part, prompt],
+					"config": types.GenerateContentConfig(
+						temperature=0.0,
+						response_mime_type="application/json",
+						response_schema=ThesisAssignmentSchema,
+					),
+				}
+				response = client.models.generate_content(**request)
+				raw_text = (response.text or "").strip()
+			break
+		except Exception as error:
+			if attempt == 0 and ("429" in str(error) or "rate" in str(error).lower()):
+				print("LLM rate limit exhausted (429); retrying once in 60 seconds.", file=sys.stderr)
+				time.sleep(60)
+				continue
 			raise
-		print("LLM rate limit exhausted (429); retrying once in 60 seconds.", file=sys.stderr)
-		time.sleep(60)
-		response = client.models.generate_content(**request)
-	raw_text = (response.text or "").strip()
+	if raw_text is None:
+		raise ValueError("Model returned an empty response.")
+	raw_text = raw_text.strip()
 	if raw_text.startswith("```"):
 		raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
 		raw_text = re.sub(r"\s*```$", "", raw_text)
@@ -370,6 +456,9 @@ def result_database_values(result, page_count=None):
 		"keyword3": (result.keywords[2].strip() if len(result.keywords) > 2 and result.keywords[2] and result.keywords[2].strip() else None),
 		"keyword4": (result.keywords[3].strip() if len(result.keywords) > 3 and result.keywords[3] and result.keywords[3].strip() else None),
 		"keyword5": (result.keywords[4].strip() if len(result.keywords) > 4 and result.keywords[4] and result.keywords[4].strip() else None),
+		"telco_score": getattr(result, "telco_score", None),
+		"ai_score": getattr(result, "ai_score", None),
+		"other_score": getattr(result, "other_score", None),
 	}
 
 
@@ -473,6 +562,15 @@ def backfill_page_counts(connection, data_dir):
 	connection.commit()
 
 
+def openai_settings():
+	missing = [name for name in (OPENAI_ENV_KEY, OPENAI_ENV_URL) if not os.environ.get(name)]
+	settings = {
+		"api_key": os.environ.get(OPENAI_ENV_KEY),
+		"base_url": os.environ.get(OPENAI_ENV_URL),
+	}
+	return settings, missing
+
+
 def main(argv=None):
 	args = parse_args(argv)
 	templates = load_templates(args.templates_dir)
@@ -491,9 +589,29 @@ def main(argv=None):
 		connection.close()
 		return 0
 
-	client = genai.Client(
-		http_options=types.HttpOptions(timeout=args.timeout * 1000)
-	)
+	if args.openai:
+		settings, missing = openai_settings()
+		if missing:
+			print(
+				"ERROR: --openai needs these environment variables, which are not set: " + ", ".join(missing),
+				file=sys.stderr,
+			)
+			connection.close()
+			return 2
+		try:
+			client = OpenAIExtractClient(settings["api_key"], settings["base_url"], args.timeout)
+		except ImportError:
+			print("ERROR: the 'openai' Python package is not installed (pip install openai).", file=sys.stderr)
+			connection.close()
+			return 2
+	else:
+		if not os.environ.get("GEMINI_API_KEY"):
+			print("ERROR: GEMINI_API_KEY environment variable is not set.", file=sys.stderr)
+			connection.close()
+			return 2
+		client = genai.Client(
+			http_options=types.HttpOptions(timeout=args.timeout * 1000)
+		)
 	processed = 0
 	saved = 0
 	failures = 0

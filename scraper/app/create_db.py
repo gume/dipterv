@@ -78,6 +78,9 @@ EXTRACT_COLUMNS = {
     "keyword3": "TEXT",
     "keyword4": "TEXT",
     "keyword5": "TEXT",
+    "telco_score": "INTEGER",
+    "ai_score": "INTEGER",
+    "other_score": "INTEGER",
 }
 
 

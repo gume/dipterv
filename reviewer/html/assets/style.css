@@ -511,6 +511,38 @@ button, input, select, textarea {
 .chip.score-4 { background: #d9f99d; color: #365314; }
 .chip.score-5 { background: #86efac; color: #14532d; }
 
+/* Compact blind degree-fit indicator: three small bars, one per degree level. */
+.fit-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 0.9rem;
+    padding: 0 0.15rem;
+}
+
+.fit-bar {
+    display: inline-flex;
+    align-items: flex-end;
+    width: 4px;
+    height: 100%;
+    border-radius: 1px;
+    background: #e5e7eb;
+    overflow: hidden;
+    cursor: help;
+}
+
+.fit-bar-fill {
+    display: block;
+    width: 100%;
+    border-radius: 1px;
+}
+
+.fit-bar-fill.score-1 { background: #ef4444; }
+.fit-bar-fill.score-2 { background: #f97316; }
+.fit-bar-fill.score-3 { background: #eab308; }
+.fit-bar-fill.score-4 { background: #84cc16; }
+.fit-bar-fill.score-5 { background: #22c55e; }
+
 /* ---- verdict buttons ---- */
 
 .verdict {

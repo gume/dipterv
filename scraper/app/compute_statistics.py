@@ -51,13 +51,18 @@ def extract_keywords_from_text(title, goal=""):
 
 
 def collect_keywords_and_theses(conn):
-    """Collect keywords and titles from extract joined with import (excluding Diplomatervezés 2)."""
+    """Collect keywords and titles of the latest version of each thesis (excluding Diplomatervezés 2)."""
     rows = conn.execute(
         """
         SELECT i.filename, i.neptun_code, i.title_hu, i.title_en,
                e.thesis_title, e.project_goal,
                e.keyword1, e.keyword2, e.keyword3, e.keyword4, e.keyword5
         FROM "import" AS i
+        JOIN (
+            SELECT neptun_code, MAX(version) AS version
+            FROM "import"
+            GROUP BY neptun_code
+        ) AS latest ON latest.neptun_code = i.neptun_code AND latest.version = i.version
         LEFT JOIN "extract" AS e ON e.filename = i.filename
         WHERE (i.subject IS NULL OR TRIM(i.subject) != ?)
         ORDER BY i.filename
@@ -274,56 +279,138 @@ def calculate_distribution_percentage(scores, label, metric_key, source_type):
     }
 
 
+ASPECT_LABELS_1_TO_5 = {
+    "language_quality": "Language Quality",
+    "goal_clarity": "Goal Clarity",
+    "task_specificity": "Task Specificity",
+    "scope_feasibility": "Scope & Feasibility",
+    "degree_appropriateness": "Degree Appropriateness",
+    "ai_promptability": "AI Promptability Resistance",
+    "structure_conformance": "Canonical Structure Conformance (1-5)",
+}
+
+FIT_LABELS = {
+    "fit_score_bprof": "BProf Fitting Score (0-100%)",
+    "fit_score_bsc": "BSc Fitting Score (0-100%)",
+    "fit_score_msc": "MSc Fitting Score (0-100%)",
+}
+
+
+def metric_definition(aspect):
+    """Return the display label and scale of a review aspect."""
+    if aspect in FIT_LABELS:
+        return FIT_LABELS[aspect], "percentage"
+    if aspect in ASPECT_LABELS_1_TO_5:
+        return ASPECT_LABELS_1_TO_5[aspect], "1_to_5"
+    label = aspect.replace("_", " ").strip()
+    label = label[:1].upper() + label[1:]
+    if aspect.startswith("fit_score_"):
+        return f"{label} (0-100%)", "percentage"
+    return label, "1_to_5"
+
+
+def collect_version_counts(conn):
+    """Number of versions per thesis, excluding Diplomatervezés 2."""
+    rows = conn.execute(
+        """
+        SELECT COUNT(*) AS versions
+        FROM "import"
+        WHERE (subject IS NULL OR TRIM(subject) != ?)
+        GROUP BY neptun_code
+        """,
+        (EXCLUDED_SUBJECT,),
+    ).fetchall()
+    return [int(r["versions"]) for r in rows]
+
+
 def compute_all_metrics(conn):
-    """Calculate distributions and averages for all review aspects and extract scores."""
+    """Calculate distributions for each AI model and aspect, using latest versions only."""
     distributions = []
 
-    # 1. Review aspect scores (language_quality, goal_clarity, etc.)
+    # 0. Revision activity: how many versions each thesis has.
+    version_counts = collect_version_counts(conn)
+    version_dist = calculate_distribution_1_to_5(
+        version_counts, "Versions per Thesis", "version_count", "import"
+    )
+    if version_dist:
+        version_dist["model"] = ""
+        distributions.append(version_dist)
+
+    # 1. Review aspect scores, computed separately for every AI model.
     aspect_rows = conn.execute(
         """
-        SELECT r.aspect, r.score
+        SELECT r.reviewer, r.aspect, r.score
         FROM reviews AS r
         JOIN "import" AS i ON i.neptun_code = r.neptun_code AND i.version = r.version
+        JOIN (
+            SELECT neptun_code, MAX(version) AS version
+            FROM "import"
+            GROUP BY neptun_code
+        ) AS latest ON latest.neptun_code = i.neptun_code AND latest.version = i.version
         WHERE r.score IS NOT NULL AND r.aspect != 'remark'
           AND (i.subject IS NULL OR TRIM(i.subject) != ?)
+        ORDER BY r.reviewer, r.aspect
         """,
         (EXCLUDED_SUBJECT,),
     ).fetchall()
 
-    aspect_scores = collections.defaultdict(list)
+    scores_by_model = collections.defaultdict(lambda: collections.defaultdict(list))
     for r in aspect_rows:
-        aspect_scores[r["aspect"]].append(int(r["score"]))
+        scores_by_model[r["reviewer"]][r["aspect"]].append(int(r["score"]))
 
-    aspect_labels_1_to_5 = {
-        "language_quality": "Language Quality",
-        "goal_clarity": "Goal Clarity",
-        "task_specificity": "Task Specificity",
-        "scope_feasibility": "Scope & Feasibility",
-        "degree_appropriateness": "Degree Appropriateness",
-        "ai_promptability": "AI Promptability Resistance",
-        "structure_conformance": "Canonical Structure Conformance (1-5)",
-    }
-
-    for aspect_key, label in aspect_labels_1_to_5.items():
-        if aspect_key in aspect_scores:
-            dist = calculate_distribution_1_to_5(
-                aspect_scores[aspect_key], label, aspect_key, "review"
-            )
+    preferred_order = list(ASPECT_LABELS_1_TO_5) + list(FIT_LABELS)
+    for model in sorted(scores_by_model):
+        aspects = scores_by_model[model]
+        ordered_aspects = [a for a in preferred_order if a in aspects]
+        ordered_aspects.extend(sorted(a for a in aspects if a not in preferred_order))
+        for aspect_key in ordered_aspects:
+            label, scale = metric_definition(aspect_key)
+            if scale == "percentage":
+                dist = calculate_distribution_percentage(
+                    aspects[aspect_key], label, aspect_key, "review"
+                )
+            else:
+                dist = calculate_distribution_1_to_5(
+                    aspects[aspect_key], label, aspect_key, "review"
+                )
             if dist:
-                distributions.append(dist)
-
-    fit_labels = [
-        ("fit_score_bprof", "BProf Fitting Score (0-100%)"),
-        ("fit_score_bsc", "BSc Fitting Score (0-100%)"),
-        ("fit_score_msc", "MSc Fitting Score (0-100%)"),
-    ]
-    for fit_key, label in fit_labels:
-        if fit_key in aspect_scores:
-            dist = calculate_distribution_percentage(aspect_scores[fit_key], label, fit_key, "review")
-            if dist:
+                dist["model"] = model
                 distributions.append(dist)
 
     return distributions
+
+
+def pooled_distribution(distributions, metric_key):
+    """Combine the same aspect across models for department-level fun facts."""
+    parts = [
+        d for d in distributions
+        if d["metric_key"] == metric_key and d.get("source_type") == "review"
+    ]
+    if not parts:
+        return None
+    total = sum(d["total_samples"] for d in parts)
+    if not total:
+        return None
+    buckets = collections.Counter()
+    for d in parts:
+        for bucket in json.loads(d["histogram_json"]):
+            buckets[bucket["bucket"]] += bucket["count"]
+    order = [bucket["bucket"] for bucket in json.loads(parts[0]["histogram_json"])]
+    histogram = [
+        {
+            "bucket": bucket,
+            "count": buckets.get(bucket, 0),
+            "percentage": round(buckets.get(bucket, 0) / total * 100, 1),
+        }
+        for bucket in order
+    ]
+    return {
+        "average_value": round(
+            sum(d["average_value"] * d["total_samples"] for d in parts) / total, 2
+        ),
+        "total_samples": total,
+        "histogram_json": json.dumps(histogram, ensure_ascii=False),
+    }
 
 
 def generate_fun_facts(conn, theses, keyword_counts, distributions):
@@ -340,8 +427,8 @@ def generate_fun_facts(conn, theses, keyword_counts, distributions):
             "highlight_stat": f"{top_kw} ({top_count}x)",
         })
 
-    # 2. Language quality insight
-    lq = next((d for d in distributions if d["metric_key"] == "language_quality"), None)
+    # 2. Language quality insight (pooled across models; per-model cards are separate)
+    lq = pooled_distribution(distributions, "language_quality")
     if lq:
         hist = json.loads(lq["histogram_json"])
         pct_5 = next((b["percentage"] for b in hist if b["bucket"] == "5"), 0)
@@ -349,12 +436,12 @@ def generate_fun_facts(conn, theses, keyword_counts, distributions):
         facts.append({
             "category": "quality",
             "title": "Language Quality Average",
-            "fact_text": f"The average language quality score across all reviewed documents is {lq['average_value']} / 5. Exactly {pct_5}% received an exceptional 5/5 score, while {pct_low}% showed noticeable linguistic defects.",
+            "fact_text": f"The average language quality score across all AI model reviews is {lq['average_value']} / 5. Exactly {pct_5}% received an exceptional 5/5 score, while {pct_low}% showed noticeable linguistic defects.",
             "highlight_stat": f"{lq['average_value']} / 5.0",
         })
 
-    # 3. Structure Conformance insight
-    sc = next((d for d in distributions if d["metric_key"] == "structure_conformance"), None)
+    # 3. Structure Conformance insight (pooled across models)
+    sc = pooled_distribution(distributions, "structure_conformance")
     if sc:
         hist = json.loads(sc["histogram_json"])
         pct_well_structured = sum(b["percentage"] for b in hist if b["bucket"] in ("4", "5"))
@@ -365,12 +452,17 @@ def generate_fun_facts(conn, theses, keyword_counts, distributions):
             "highlight_stat": f"{pct_well_structured}% compliant",
         })
 
-    # 4. Average task count
+    # 4. Average task count (latest versions only)
     task_row = conn.execute(
         """
         SELECT tasks_json
         FROM extract AS e
         JOIN "import" AS i ON i.filename = e.filename
+        JOIN (
+            SELECT neptun_code, MAX(version) AS version
+            FROM "import"
+            GROUP BY neptun_code
+        ) AS latest ON latest.neptun_code = i.neptun_code AND latest.version = i.version
         WHERE e.tasks_json IS NOT NULL AND (i.subject IS NULL OR TRIM(i.subject) != ?)
         """,
         (EXCLUDED_SUBJECT,),
@@ -393,8 +485,8 @@ def generate_fun_facts(conn, theses, keyword_counts, distributions):
                 "highlight_stat": f"{avg_tasks} tasks",
             })
 
-    # 5. AI Promptability insight
-    ai_dist = next((d for d in distributions if d["metric_key"] == "ai_promptability"), None)
+    # 5. AI Promptability insight (pooled across models)
+    ai_dist = pooled_distribution(distributions, "ai_promptability")
     if ai_dist:
         hist = json.loads(ai_dist["histogram_json"])
         pct_robust = sum(b["percentage"] for b in hist if b["bucket"] in ("4", "5"))
@@ -412,6 +504,20 @@ def generate_fun_facts(conn, theses, keyword_counts, distributions):
         "fact_text": f"The department currently manages {len(theses)} active bachelor and master thesis descriptions across multiple specializations.",
         "highlight_stat": f"{len(theses)} active theses",
     })
+
+    # 7. Revision activity: versions per latest thesis
+    version_counts = collect_version_counts(conn)
+    if version_counts:
+        total_versions = sum(version_counts)
+        avg_versions = round(total_versions / len(version_counts), 2)
+        revised = sum(1 for count in version_counts if count > 1)
+        revised_pct = round(revised / len(version_counts) * 100, 1)
+        facts.append({
+            "category": "portfolio",
+            "title": "Description Revision Activity",
+            "fact_text": f"The {len(version_counts)} latest thesis descriptions have {total_versions} versions in total: {avg_versions} versions per thesis on average. {revised} descriptions ({revised_pct}%) have at least one revision, with up to {max(version_counts)} versions.",
+            "highlight_stat": f"{avg_versions} versions / thesis",
+        })
 
     return facts
 
@@ -443,11 +549,12 @@ def save_statistics(conn, topics, distributions, fun_facts):
             conn.execute(
                 """
                 INSERT INTO description_metric_distributions
-                (metric_key, metric_label, source_type, average_value, min_value, max_value, total_samples, histogram_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (metric_key, model, metric_label, source_type, average_value, min_value, max_value, total_samples, histogram_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     d["metric_key"],
+                    d.get("model", ""),
                     d["metric_label"],
                     d["source_type"],
                     d["average_value"],
@@ -507,7 +614,9 @@ def main():
     distributions = compute_all_metrics(conn)
     print(f"\nCalculated distributions for {len(distributions)} metrics:")
     for d in distributions:
-        print(f"  - {d['metric_label']}: avg={d['average_value']} (samples: {d['total_samples']})")
+        model = d.get("model")
+        prefix = f"{model} / " if model else ""
+        print(f"  - {prefix}{d['metric_label']}: avg={d['average_value']} (samples: {d['total_samples']})")
 
     # Generate fun facts
     fun_facts = generate_fun_facts(conn, theses, keyword_counts, distributions)

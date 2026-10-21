@@ -137,6 +137,12 @@ var Dipterv = (function () {
         return key.split('_').map(function (part) { return part.charAt(0).toUpperCase(); }).join('');
     }
 
+    var FIT_LABELS = { fit_score_bprof: 'BProf', fit_score_bsc: 'BSc', fit_score_msc: 'MSc' };
+
+    function fitLabel(key) {
+        return FIT_LABELS[key] || aspectLabel(key);
+    }
+
     function aiAverage(doc, model) {
         var review = doc.ai[model];
         if (!review) return 0;
@@ -155,6 +161,20 @@ var Dipterv = (function () {
         }).join('');
     }
 
+    function aiFitBars(review) {
+        if (!review.fit || !review.fit.length) return '';
+        var bars = review.fit.map(function (item) {
+            var value = item.score == null ? 0 : Math.max(0, Math.min(100, Number(item.score)));
+            var label = fitLabel(item.aspect);
+            var text = label + ': ' + (item.score == null ? '?' : item.score) + '/100\n' + (item.result || '');
+            var colorClass = 'score-' + Math.min(5, Math.max(1, Math.ceil(value / 20)));
+            return '<span class="fit-bar" data-tip="' + esc(text) +
+                '" aria-label="' + esc(label + ': ' + value + '%') + '">' +
+                '<span class="fit-bar-fill ' + colorClass + '" style="height:' + value + '%"></span></span>';
+        }).join('');
+        return '<span class="fit-bars" role="img" aria-label="Degree fit">' + bars + '</span>';
+    }
+
     function aiModelCell(doc, model) {
         var review = doc.ai[model];
         if (!review) return '<span class="muted">-</span>';
@@ -162,7 +182,7 @@ var Dipterv = (function () {
         var summary = review.summary || ('Average ' + average.toFixed(2) + '/5. Summary not available.');
         return '<div class="ai-model-cell"><span class="ai-average-value" data-tip="' + esc(summary) + '">' +
             (average ? average.toFixed(2) : '') + '</span><div class="ai-aspect-list">' +
-            aiAspectChips(review) + '</div></div>';
+            aiFitBars(review) + aiAspectChips(review) + '</div></div>';
     }
 
     function aiScores(doc) {
@@ -173,7 +193,7 @@ var Dipterv = (function () {
             return '<div class="ai-row"><span class="ai-model" data-tip="' + esc(model) + '">' + esc(model) +
                 '</span><span class="ai-average-value" data-tip="' + esc(review.summary || 'Summary not available.') + '">' +
                 aiAverage(doc, model).toFixed(2) + '</span><div class="ai-aspect-list">' +
-                aiAspectChips(review) + '</div></div>';
+                aiFitBars(review) + aiAspectChips(review) + '</div></div>';
         }).join('');
     }
 

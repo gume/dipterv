@@ -44,19 +44,25 @@ foreach (fetch_all($db, 'SELECT neptun_code, version, reviewer, aspect, result, 
         if ($r['score'] !== null) {
             $docs[$i]['remark_scores'][$r['reviewer']] = (int)$r['score'];
         }
-    } elseif (!str_starts_with($r['aspect'], 'fit_score_') && $r['aspect'] !== 'structure_conformance') {
+    } else {
         if (!isset($docs[$i]['ai'][$r['reviewer']])) {
             $docs[$i]['ai'][$r['reviewer']] = [
                 'average_score' => null,
                 'summary' => '',
                 'aspects' => [],
+                'fit' => [],
             ];
         }
-        $docs[$i]['ai'][$r['reviewer']]['aspects'][] = [
+        $item = [
             'aspect' => $r['aspect'],
             'score' => $r['score'] === null ? null : (int)$r['score'],
             'result' => $r['result'],
         ];
+        if (str_starts_with($r['aspect'], 'fit_score_')) {
+            $docs[$i]['ai'][$r['reviewer']]['fit'][] = $item;
+        } else {
+            $docs[$i]['ai'][$r['reviewer']]['aspects'][] = $item;
+        }
     }
 }
 
@@ -69,7 +75,7 @@ if ($summaryTable) {
         }
         $i = $index[$key];
         if (!isset($docs[$i]['ai'][$summary['reviewer']])) {
-            $docs[$i]['ai'][$summary['reviewer']] = ['average_score' => null, 'summary' => '', 'aspects' => []];
+            $docs[$i]['ai'][$summary['reviewer']] = ['average_score' => null, 'summary' => '', 'aspects' => [], 'fit' => []];
         }
         $docs[$i]['ai'][$summary['reviewer']]['average_score'] = (float)$summary['average_score'];
         $docs[$i]['ai'][$summary['reviewer']]['summary'] = $summary['summary'];

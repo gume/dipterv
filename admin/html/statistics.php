@@ -174,22 +174,28 @@ render_head('Statistics', 'statistics.php');
         <section class="stats-section">
             <div class="section-header">
                 <h2>Metric Distributions & Histograms <span class="count"><?= count($metrics) ?></span></h2>
-                <p class="section-desc">Score histograms and average ratings across all analyzed thesis descriptions.</p>
+                <p class="section-desc">Latest versions only. AI aspect scores are calculated separately for each model.</p>
             </div>
             <div class="metrics-grid">
                 <?php foreach ($metrics as $m):
                     $avg = (float)$m['average_value'];
                     $samples = (int)$m['total_samples'];
                     $isScore100 = str_contains($m['metric_key'], 'fit_score_') || str_ends_with($m['metric_key'], '_fit');
-                    $scale = $isScore100 ? '/ 100%' : '/ 5.0';
+                    $isVersionCount = $m['metric_key'] === 'version_count';
+                    $scale = $isVersionCount ? 'versions / thesis' : ($isScore100 ? '/ 100%' : '/ 5.0');
                     $histogram = json_decode($m['histogram_json'] ?? '[]', true) ?: [];
-                    $sourceLabel = $isScore100 ? 'Blind Fit Test' : (($m['source_type'] === 'extract') ? 'Extract Assessment' : 'AI Review');
+                    $sourceLabel = $isScore100 ? 'Blind Fit Test' : (($m['source_type'] === 'extract') ? 'Extract Assessment' : (($m['source_type'] === 'import') ? 'Versioning' : 'AI Review'));
                 ?>
                     <article class="metric-card">
                         <div>
                             <div class="metric-header">
                                 <h3 class="metric-title"><?= h($m['metric_label']) ?></h3>
-                                <span class="metric-badge"><?= h($sourceLabel) ?></span>
+                                <span class="metric-badges">
+                                    <?php if (!empty($m['model'])): ?>
+                                        <span class="metric-badge model"><?= h($m['model']) ?></span>
+                                    <?php endif; ?>
+                                    <span class="metric-badge"><?= h($sourceLabel) ?></span>
+                                </span>
                             </div>
                             <div class="metric-score-row">
                                 <span class="metric-avg-val"><?= number_format($avg, $isScore100 ? 1 : 2) ?></span>

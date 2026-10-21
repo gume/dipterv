@@ -287,17 +287,6 @@ def ensure_schema(connection):
             top_keywords_json TEXT,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
-        CREATE TABLE IF NOT EXISTS "description_metric_distributions" (
-            metric_key TEXT PRIMARY KEY NOT NULL,
-            metric_label TEXT NOT NULL,
-            source_type TEXT NOT NULL,
-            average_value REAL NOT NULL,
-            min_value REAL,
-            max_value REAL,
-            total_samples INTEGER NOT NULL,
-            histogram_json TEXT NOT NULL,
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
         CREATE TABLE IF NOT EXISTS "description_fun_facts" (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category TEXT NOT NULL,
@@ -312,6 +301,51 @@ def ensure_schema(connection):
         'INSERT OR IGNORE INTO "reviewers" (id, name) VALUES (?, ?)', HUMAN_REVIEWERS
     )
     ensure_extract_schema(connection)
+    ensure_metric_distribution_schema(connection)
+
+
+def ensure_metric_distribution_schema(connection):
+    """Create the metrics table, migrating the pre-model layout if necessary."""
+    columns = {
+        row[1] for row in connection.execute('PRAGMA table_info("description_metric_distributions")')
+    }
+    if columns and "model" not in columns:
+        # Keep the existing derived rows until compute_statistics.py refreshes them.
+        connection.execute(
+            'ALTER TABLE "description_metric_distributions" RENAME TO "description_metric_distributions_old"'
+        )
+        _create_metric_distribution_table(connection)
+        connection.execute(
+            """
+            INSERT INTO "description_metric_distributions"
+                (metric_key, model, metric_label, source_type, average_value, min_value, max_value, total_samples, histogram_json, updated_at)
+            SELECT metric_key, '', metric_label, source_type, average_value, min_value, max_value, total_samples, histogram_json, updated_at
+            FROM "description_metric_distributions_old"
+            """
+        )
+        connection.execute('DROP TABLE "description_metric_distributions_old"')
+    else:
+        _create_metric_distribution_table(connection)
+
+
+def _create_metric_distribution_table(connection):
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS "description_metric_distributions" (
+            metric_key TEXT NOT NULL,
+            model TEXT NOT NULL DEFAULT '',
+            metric_label TEXT NOT NULL,
+            source_type TEXT NOT NULL,
+            average_value REAL NOT NULL,
+            min_value REAL,
+            max_value REAL,
+            total_samples INTEGER NOT NULL,
+            histogram_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (metric_key, model)
+        )
+        """
+    )
 
 
 def load_supervisor_rows(workbook_path):

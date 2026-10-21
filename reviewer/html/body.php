@@ -1,9 +1,12 @@
 <?php
 require __DIR__ . '/db.php';
 
-// Same body as scraper/app/review_docs.py document_body().
+// Same body as scraper/app/review_docs.py document_body(), with the extracted
+// keywords appended so reviewers can see them next to the description.
 $rows = fetch_all(open_db(),
-    'SELECT thesis_title, problem_background, project_goal, task_intro, tasks_json FROM "extract" WHERE filename = ?',
+    'SELECT thesis_title, problem_background, project_goal, task_intro, tasks_json,
+            keyword1, keyword2, keyword3, keyword4, keyword5
+     FROM "extract" WHERE filename = ?',
     [$_GET['filename'] ?? '']);
 if (!$rows) {
     json_out(['error' => 'No extracted text for this file.'], 404);
@@ -21,4 +24,14 @@ $parts = array_filter([
     return $part !== null && $part !== '';
 });
 
-json_out(['text' => implode("\n\n", $parts)]);
+$keywords = array_filter(
+    [$e['keyword1'], $e['keyword2'], $e['keyword3'], $e['keyword4'], $e['keyword5']],
+    function ($keyword) {
+        return $keyword !== null && trim($keyword) !== '';
+    });
+$text = implode("\n\n", $parts);
+if ($keywords) {
+    $text .= "\n\nKeywords: " . implode(', ', $keywords);
+}
+
+json_out(['text' => $text]);

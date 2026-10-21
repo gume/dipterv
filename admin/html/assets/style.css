@@ -284,6 +284,13 @@ th.desc::after { content: " \25BC"; opacity: 1; }
     font-weight: 600;
     color: var(--ink);
 }
+.metric-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    max-width: 65%;
+}
 .metric-badge {
     font-size: .72rem;
     text-transform: uppercase;
@@ -295,6 +302,14 @@ th.desc::after { content: " \25BC"; opacity: 1; }
     color: var(--muted);
     border: 1px solid var(--line);
     white-space: nowrap;
+}
+.metric-badge.model {
+    background: #dbeafe;
+    color: #1e40af;
+    border-color: #bfdbfe;
+    white-space: normal;
+    word-break: break-word;
+    text-align: right;
 }
 .metric-score-row {
     display: flex;

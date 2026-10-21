@@ -98,7 +98,7 @@ One row per extracted PDF, keyed by `filename`. `template_status` stores the tem
 
 ### `description_topics`
 
-Top 5 department topics synthesized from thesis keywords and titles by `compute_statistics.py`.
+Top 5 department topics synthesized from thesis keywords and titles of the latest description version of each thesis by `compute_statistics.py`.
 
 | Column | Purpose |
 | --- | --- |
@@ -112,13 +112,14 @@ Top 5 department topics synthesized from thesis keywords and titles by `compute_
 
 ### `description_metric_distributions`
 
-Summary statistics and histogram buckets for extracted and review metrics.
+Summary statistics and histogram buckets for extracted and review metrics. Only the latest description version is counted, and review aspects are stored once per AI model.
 
 | Column | Purpose |
 | --- | --- |
-| `metric_key` | Metric identifier (e.g. `language_quality`, `structure_conformance`, `fit_msc`, `fit_bsc`, `fit_bprof`). |
+| `metric_key` | Metric identifier (e.g. `language_quality`, `structure_conformance`, `fit_score_msc`, `fit_score_bsc`, `fit_score_bprof`, `version_count`). |
+| `model` | Reviewer/model id for review metrics; empty for other sources. |
 | `metric_label` | Human-readable metric display name. |
-| `source_type` | Data source (`extract` or `review`). |
+| `source_type` | Data source (`extract`, `review`, or `import`). |
 | `average_value` | Arithmetic mean. |
 | `min_value`, `max_value` | Range bounds. |
 | `total_samples` | Number of data points. |
